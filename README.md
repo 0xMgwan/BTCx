@@ -2,7 +2,9 @@
 
 ![Bitcoin Payment Gateway](https://upload.wikimedia.org/wikipedia/commons/thumb/4/46/Bitcoin.svg/128px-Bitcoin.svg.png)
 
-A secure, non-custodial Bitcoin payment gateway that allows businesses to accept Bitcoin payments without intermediaries, leveraging the Internet Computer Protocol (ICP) for secure transactions.
+A secure, non-custodial Bitcoin payment gateway that allows businesses to accept Bitcoin payments without intermediaries, leveraging the Internet Computer Protocol (ICP) for secure transactions. It cuts fees, speeds up payments with ckBTC, removes custody risks, simplifies setup, and enables global, instant payments.
+
+
 
 ## Table of Contents
 
