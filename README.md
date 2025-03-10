@@ -88,7 +88,7 @@ sh -ci "$(curl -fsSL https://internetcomputer.org/install.sh)"
 
 2. Clone the repository:
 ```bash
-git clone https://github.com/yourusername/btc-payment.git
+git clone https://github.com/0xMgwan/btc-payment.git
 cd btc-payment
 ```
 
