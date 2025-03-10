@@ -1,4 +1,9 @@
 # Bitcoin Payment Gateway with Internet Computer Protocol
+- [BTCx Frontend Cannister. ID: 32qas-pyaaa-aaaad-qg6zq-cai
+](https://32qas-pyaaa-aaaad-qg6zq-cai.icp0.io/) 
+- [Backend Cannister. ID: 35rgg-caaaa-aaaad-qg6za-cai
+](https://a4gq6-oaaaa-aaaab-qaa4q-cai.raw.icp0.io/?id=35rgg-caaaa-aaaad-qg6za-cai) 
+- Internet Identity using the existing mainnet deployment `Cannister ID`: rdmx6-jaaaa-aaaaa-aaadq-cai
 
 ![Bitcoin Payment Gateway](https://upload.wikimedia.org/wikipedia/commons/thumb/4/46/Bitcoin.svg/128px-Bitcoin.svg.png)
 
