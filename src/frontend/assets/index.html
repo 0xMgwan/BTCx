@@ -1,0 +1,774 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BTCX - Bitcoin Payment Gateway</title>
+    <meta name="description" content="A secure, non-custodial Bitcoin payment gateway using Internet Computer Protocol">
+    <meta name="keywords" content="Bitcoin, Payment, Gateway, ICP, Internet Computer, Blockchain">
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <link rel="stylesheet" href="./css/styles.css">
+    <!-- Internet Computer dependencies -->
+    <script src="https://unpkg.com/@dfinity/agent@0.15.4/dist/index.js"></script>
+    <script src="https://unpkg.com/@dfinity/auth-client@0.15.4/dist/index.js"></script>
+    <script src="https://unpkg.com/@dfinity/principal@0.15.4/dist/index.js"></script>
+    
+    <script>
+        // Make IC libraries available globally
+        // Initialize the global ic object properly
+        window.ic = window.ic || {};
+        window.ic.agent = window.ic.agent || {};
+        window.ic.agent.Actor = Actor;
+        window.ic.agent.HttpAgent = HttpAgent;
+        window.ic.authClient = window.ic.authClient || {};
+        window.ic.authClient.AuthClient = AuthClient;
+        window.ic.Principal = window.ic.Principal || {};
+        window.ic.Principal.Principal = Principal;
+        
+        // Set canister IDs - make sure they don't have any trailing characters
+        const BTC_PAYMENT_CANISTER_ID = 'bkyz2-fmaaa-aaaaa-qaaaq-cai';
+        const INTERNET_IDENTITY_CANISTER_ID = 'br5f7-7uaaa-aaaaa-qaaca-cai';
+    </script>
+    <style>
+        .gradient-bg {
+            background: linear-gradient(135deg, #0052cc 0%, #0066ff 100%);
+        }
+        .bitcoin-bg {
+            background: url('https://images.unsplash.com/photo-1518546305927-5a555bb7020d?crop=entropy&cs=tinysrgb&fit=crop&fm=jpg&h=300&ixid=MnwxfDB8MXxyYW5kb218MHx8Yml0Y29pbnx8fHx8fDE3MDk1MzU0NjU&ixlib=rb-4.0.3&q=80&utm_campaign=api-credit&utm_medium=referral&utm_source=unsplash_source&w=1400') center/cover;
+        }
+    </style>
+</head>
+<body class="bg-gray-50 min-h-screen flex flex-col">
+    <!-- Navigation Bar -->
+    <nav class="bg-white shadow-md py-3">
+        <div class="container mx-auto px-4 flex justify-between items-center">
+            <div class="flex items-center">
+                <a href="#" class="flex items-center group">
+                    <div class="bg-blue-600 text-white p-2 rounded-full mr-2 group-hover:bg-blue-700 transition-colors">
+                        <i class="fab fa-bitcoin text-xl"></i>
+                    </div>
+                    <span class="text-xl font-bold text-blue-600 group-hover:text-blue-700 transition-colors">BTCX</span>
+                </a>
+                <div class="hidden md:flex ml-10 space-x-6">
+                    <a href="#how-it-works" class="px-3 py-2 text-gray-700 hover:text-blue-600 hover:bg-blue-50 rounded-md transition-all font-medium">How it works</a>
+                    <a href="#integration" class="px-3 py-2 text-gray-700 hover:text-blue-600 hover:bg-blue-50 rounded-md transition-all font-medium">Integration</a>
+                    <a href="#pricing" class="px-3 py-2 text-gray-700 hover:text-blue-600 hover:bg-blue-50 rounded-md transition-all font-medium">Pricing</a>
+                    <a href="#industries" class="px-3 py-2 text-gray-700 hover:text-blue-600 hover:bg-blue-50 rounded-md transition-all font-medium">Industries</a>
+                    <a href="#contact" class="px-3 py-2 text-gray-700 hover:text-blue-600 hover:bg-blue-50 rounded-md transition-all font-medium">Contact Us</a>
+                </div>
+            </div>
+            <div class="flex items-center space-x-3">
+                <a href="http://127.0.0.1:8080/?canisterId=be2us-64aaa-aaaaa-qaabq-cai&id=bkyz2-fmaaa-aaaaa-qaaaq-cai" target="_blank" class="px-3 py-2 text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded-md transition-all font-medium flex items-center">
+                    <i class="fas fa-code mr-2"></i> Candid UI
+                </a>
+                <button id="nav-auth-button" class="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 transition-colors flex items-center shadow-md">
+                    <i class="fas fa-user-circle mr-2"></i> Sign In
+                </button>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Hero Section -->
+    <div class="gradient-bg relative py-24">
+        <div class="container mx-auto px-4 relative">
+            <header class="text-center">
+                <div class="inline-block bg-white/10 backdrop-blur-sm p-4 rounded-full mb-6">
+                    <i class="fab fa-bitcoin text-5xl text-white"></i>
+                </div>
+                <h1 class="text-5xl font-bold text-white mb-6">BTCX Payment Gateway</h1>
+                <p class="text-2xl text-white/90 mb-10 max-w-2xl mx-auto">Accept Bitcoin payments seamlessly with our secure, non-custodial solution.</p>
+                <div class="flex justify-center space-x-4">
+                    <a href="#how-it-works" class="bg-white text-blue-600 px-8 py-4 rounded-lg font-semibold hover:bg-gray-100 transition-colors shadow-lg flex items-center">
+                        <i class="fas fa-rocket mr-2"></i> Get Started
+                    </a>
+                    <a href="#pricing" class="border-2 border-white text-white px-8 py-4 rounded-lg font-semibold hover:bg-white/10 transition-colors flex items-center">
+                        <i class="fas fa-info-circle mr-2"></i> Learn More
+                    </a>
+                </div>
+            </header>
+        </div>
+    </div>
+    
+    <!-- Fee Structure -->
+    <div id="pricing" class="bg-gray-50 py-16">
+        <div class="container mx-auto px-4">
+            <h2 class="text-3xl font-bold text-center mb-4 text-gray-800">Transparent Fee Structure</h2>
+            <p class="text-center text-gray-600 max-w-2xl mx-auto mb-12">Simple, predictable pricing with no hidden fees or surprises. Pay only for what you use.</p>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
+                <div class="bg-white p-8 rounded-xl shadow-lg text-center">
+                    <div class="text-blue-600 font-bold text-5xl mb-4">0.5%</div>
+                    <h3 class="text-xl font-semibold mb-2">Standard Rate</h3>
+                    <p class="text-gray-600">For all transactions, no hidden fees</p>
+                </div>
+                <div class="bg-white p-8 rounded-xl shadow-lg text-center border-2 border-blue-600">
+                    <div class="text-blue-600 font-bold text-5xl mb-4">0.3%</div>
+                    <h3 class="text-xl font-semibold mb-2">Business Rate</h3>
+                    <p class="text-gray-600">For monthly volume over $10,000</p>
+                    <div class="mt-4 inline-block bg-blue-100 text-blue-600 px-3 py-1 rounded-full text-sm font-semibold">Popular</div>
+                </div>
+                <div class="bg-white p-8 rounded-xl shadow-lg text-center">
+                    <div class="text-blue-600 font-bold text-5xl mb-4">0.1%</div>
+                    <h3 class="text-xl font-semibold mb-2">Enterprise Rate</h3>
+                    <p class="text-gray-600">Custom solutions for high volume</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Content -->
+    <div id="how-it-works" class="container mx-auto px-4 py-12 flex-grow">
+        <h2 class="text-3xl font-bold text-center mb-8 text-gray-800">Create a Payment Request</h2>
+        <p class="text-center text-gray-600 max-w-2xl mx-auto mb-10">Our secure, non-custodial Bitcoin payment gateway allows you to accept payments from anywhere in the world with minimal fees and lightning-fast transactions.</p>
+        
+        <div class="max-w-md mx-auto bg-white rounded-xl shadow-2xl p-8 border border-gray-100">
+            <div class="flex justify-between items-center mb-6">
+                <h3 class="text-xl font-bold text-gray-800">Payment Gateway</h3>
+                <div class="bg-blue-100 text-blue-600 px-3 py-1 rounded-full text-sm font-semibold">Secure</div>
+            </div>
+            
+            <div id="auth-section" class="mb-8">
+                <button id="auth-button" class="w-full bg-gradient-to-r from-blue-500 to-blue-600 text-white py-3 px-6 rounded-lg hover:from-blue-600 hover:to-blue-700 transition-all duration-300 font-semibold flex items-center justify-center space-x-2 shadow-md">
+                    <i class="fab fa-bitcoin text-xl"></i>
+                    <span>Sign in with Internet Identity</span>
+                </button>
+            </div>
+
+            <div id="payment-form" class="space-y-6 hidden">
+                <div>
+                    <label class="block text-gray-700 text-sm font-bold mb-2" for="amount">
+                        Amount (BTC)
+                    </label>
+                    <div class="relative">
+                        <input type="number" id="amount" step="0.00000001" 
+                               class="w-full p-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 pl-10">
+                        <i class="fab fa-bitcoin absolute left-3 top-3.5 text-gray-400"></i>
+                    </div>
+                </div>
+
+                <div>
+                    <label class="block text-gray-700 text-sm font-bold mb-2" for="recipient">
+                        Recipient Address
+                    </label>
+                    <input type="text" id="recipient" 
+                           class="w-full p-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500">
+                </div>
+
+                <div>
+                    <label class="block text-gray-700 text-sm font-bold mb-2" for="memo">
+                        Memo (Optional)
+                    </label>
+                    <textarea id="memo" 
+                              class="w-full p-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 h-24 resize-none"></textarea>
+                </div>
+
+                <button id="submit-payment" class="w-full bg-gradient-to-r from-blue-500 to-blue-600 text-white py-3 px-6 rounded-lg hover:from-blue-600 hover:to-blue-700 transition-all duration-300 font-semibold">
+                    Create Payment Request
+                </button>
+            </div>
+
+            <div id="payment-status" class="mt-8 hidden">
+                <div class="border border-gray-200 rounded-lg p-6 bg-gray-50">
+                    <div class="flex items-center justify-between mb-4">
+                        <h3 class="font-bold text-xl text-gray-800">Payment Details</h3>
+                        <div class="bg-green-100 text-green-600 px-3 py-1 rounded-full text-sm font-semibold">Created</div>
+                    </div>
+                    <div id="payment-details" class="space-y-3">
+                        <!-- Payment details will be inserted here -->
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Features Section -->
+    <div class="bg-gray-100 py-16">
+        <div class="container mx-auto px-4">
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
+                <div class="bg-white p-6 rounded-xl shadow-lg text-center">
+                    <i class="fas fa-lock text-4xl text-orange-500 mb-4"></i>
+                    <h3 class="text-xl font-semibold mb-2">Secure</h3>
+                    <p class="text-gray-600">Non-custodial solution with advanced encryption</p>
+                </div>
+                <div class="bg-white p-6 rounded-xl shadow-lg text-center">
+                    <i class="fas fa-bolt text-4xl text-orange-500 mb-4"></i>
+                    <h3 class="text-xl font-semibold mb-2">Fast</h3>
+                    <p class="text-gray-600">Lightning-fast transactions with low fees</p>
+                </div>
+                <div class="bg-white p-6 rounded-xl shadow-lg text-center">
+                    <i class="fas fa-globe text-4xl text-orange-500 mb-4"></i>
+                    <h3 class="text-xl font-semibold mb-2">Global</h3>
+                    <p class="text-gray-600">Accept payments from anywhere in the world</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Contact Us Section -->
+    <div class="bg-gray-100 py-16" id="contact">
+        <div class="container mx-auto px-4">
+            <h2 class="text-3xl font-bold text-center mb-12 text-gray-800">Contact Us</h2>
+            <div class="max-w-2xl mx-auto bg-white rounded-xl shadow-lg overflow-hidden">
+                <div class="md:flex">
+                    <div class="md:w-1/3 bg-blue-600 text-white p-8">
+                        <h3 class="text-xl font-bold mb-4">Get in Touch</h3>
+                        <p class="mb-6">Have questions about our services? Fill out the form and our team will get back to you shortly.</p>
+                        <div class="space-y-4">
+                            <div class="flex items-start">
+                                <i class="fas fa-envelope mt-1 mr-3"></i>
+                                <span>support@btcx.com</span>
+                            </div>
+                            <div class="flex items-start">
+                                <i class="fas fa-phone-alt mt-1 mr-3"></i>
+                                <span>+1 (555) 123-4567</span>
+                            </div>
+                            <div class="flex items-start">
+                                <i class="fas fa-map-marker-alt mt-1 mr-3"></i>
+                                <span>123 Blockchain Ave, San Francisco, CA</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="md:w-2/3 p-8">
+                        <form id="contact-form" class="space-y-6">
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                <div>
+                                    <label for="name" class="block text-sm font-medium text-gray-700 mb-1">Full Name</label>
+                                    <input type="text" id="name" name="name" class="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="John Doe" required>
+                                </div>
+                                <div>
+                                    <label for="email" class="block text-sm font-medium text-gray-700 mb-1">Email Address</label>
+                                    <input type="email" id="email" name="email" class="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="john@example.com" required>
+                                </div>
+                            </div>
+                            <div>
+                                <label for="subject" class="block text-sm font-medium text-gray-700 mb-1">Subject</label>
+                                <input type="text" id="subject" name="subject" class="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="How can we help you?" required>
+                            </div>
+                            <div>
+                                <label for="message" class="block text-sm font-medium text-gray-700 mb-1">Message</label>
+                                <textarea id="message" name="message" rows="4" class="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="Your message here..." required></textarea>
+                            </div>
+                            <div>
+                                <button type="submit" class="w-full bg-blue-600 text-white px-6 py-3 rounded-lg font-semibold hover:bg-blue-700 transition-colors">Send Message</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- FAQ Section -->
+    <div class="bg-white py-16" id="faq">
+        <div class="container mx-auto px-4">
+            <h2 class="text-3xl font-bold text-center mb-12 text-gray-800">Frequently Asked Questions</h2>
+            <div class="max-w-3xl mx-auto space-y-6">
+                <div class="border border-gray-200 rounded-lg overflow-hidden">
+                    <button class="flex justify-between items-center w-full p-4 text-left bg-gray-50 hover:bg-gray-100 transition-colors" onclick="toggleFAQ(1)">
+                        <span class="font-semibold">How secure are BTCX payments?</span>
+                        <i class="fas fa-chevron-down text-blue-600" id="faq-icon-1"></i>
+                    </button>
+                    <div class="p-4 bg-white hidden" id="faq-answer-1">
+                        <p>BTCX uses advanced encryption and non-custodial technology to ensure your Bitcoin payments are completely secure. We leverage ICP's canisters for direct Bitcoin integration, providing the highest level of security while maintaining ease of use.</p>
+                    </div>
+                </div>
+                
+                <div class="border border-gray-200 rounded-lg overflow-hidden">
+                    <button class="flex justify-between items-center w-full p-4 text-left bg-gray-50 hover:bg-gray-100 transition-colors" onclick="toggleFAQ(2)">
+                        <span class="font-semibold">How long do transactions take to process?</span>
+                        <i class="fas fa-chevron-down text-blue-600" id="faq-icon-2"></i>
+                    </button>
+                    <div class="p-4 bg-white hidden" id="faq-answer-2">
+                        <p>With our ckBTC integration, transactions typically have 1-second finality with costs as low as $0.01. Standard Bitcoin transactions follow the Bitcoin network confirmation times, typically 10-60 minutes depending on network congestion.</p>
+                    </div>
+                </div>
+                
+                <div class="border border-gray-200 rounded-lg overflow-hidden">
+                    <button class="flex justify-between items-center w-full p-4 text-left bg-gray-50 hover:bg-gray-100 transition-colors" onclick="toggleFAQ(3)">
+                        <span class="font-semibold">How do I integrate BTCX with my existing website?</span>
+                        <i class="fas fa-chevron-down text-blue-600" id="faq-icon-3"></i>
+                    </button>
+                    <div class="p-4 bg-white hidden" id="faq-answer-3">
+                        <p>BTCX offers simple integration options including a JavaScript SDK, REST API, and pre-built payment buttons. Our documentation provides step-by-step guides for all major platforms and frameworks, making integration straightforward for developers of all skill levels.</p>
+                    </div>
+                </div>
+                
+                <div class="border border-gray-200 rounded-lg overflow-hidden">
+                    <button class="flex justify-between items-center w-full p-4 text-left bg-gray-50 hover:bg-gray-100 transition-colors" onclick="toggleFAQ(4)">
+                        <span class="font-semibold">What businesses can use BTCX?</span>
+                        <i class="fas fa-chevron-down text-blue-600" id="faq-icon-4"></i>
+                    </button>
+                    <div class="p-4 bg-white hidden" id="faq-answer-4">
+                        <p>BTCX is designed for businesses of all sizes, from small e-commerce stores to large enterprises. Our solutions are particularly valuable for global businesses, subscription services, digital content providers, and any company looking to reduce payment processing fees.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Contact Section -->
+    <div id="contact" class="bg-blue-600 text-white py-16">
+        <div class="container mx-auto px-4">
+            <div class="max-w-4xl mx-auto">
+                <h2 class="text-3xl font-bold mb-4 text-center">Contact Us</h2>
+                <p class="text-center text-blue-100 max-w-2xl mx-auto mb-8">Have questions about our Bitcoin payment gateway? Our team is here to help you get started.</p>
+                <form id="contact-form" class="grid grid-cols-1 md:grid-cols-2 gap-6 bg-blue-700/30 p-8 rounded-xl backdrop-blur-sm shadow-lg">
+                    <div>
+                        <label class="block mb-2 font-semibold" for="name">Name</label>
+                        <div class="relative">
+                            <i class="fas fa-user absolute left-3 top-3.5 text-blue-300"></i>
+                            <input type="text" id="name" class="w-full p-3 pl-10 rounded-lg bg-blue-500/50 border border-blue-400 text-white placeholder-blue-200 focus:outline-none focus:ring-2 focus:ring-white" placeholder="Your name" required>
+                        </div>
+                    </div>
+                    <div>
+                        <label class="block mb-2 font-semibold" for="email">Email</label>
+                        <div class="relative">
+                            <i class="fas fa-envelope absolute left-3 top-3.5 text-blue-300"></i>
+                            <input type="email" id="email" class="w-full p-3 pl-10 rounded-lg bg-blue-500/50 border border-blue-400 text-white placeholder-blue-200 focus:outline-none focus:ring-2 focus:ring-white" placeholder="Your email" required>
+                        </div>
+                    </div>
+                    <div class="md:col-span-2">
+                        <label class="block mb-2 font-semibold" for="subject">Subject</label>
+                        <div class="relative">
+                            <i class="fas fa-tag absolute left-3 top-3.5 text-blue-300"></i>
+                            <input type="text" id="subject" class="w-full p-3 pl-10 rounded-lg bg-blue-500/50 border border-blue-400 text-white placeholder-blue-200 focus:outline-none focus:ring-2 focus:ring-white" placeholder="Subject" required>
+                        </div>
+                    </div>
+                    <div class="md:col-span-2">
+                        <label class="block mb-2 font-semibold" for="message">Message</label>
+                        <div class="relative">
+                            <i class="fas fa-comment absolute left-3 top-3.5 text-blue-300"></i>
+                            <textarea id="message" rows="5" class="w-full p-3 pl-10 rounded-lg bg-blue-500/50 border border-blue-400 text-white placeholder-blue-200 focus:outline-none focus:ring-2 focus:ring-white resize-none" placeholder="Your message" required></textarea>
+                        </div>
+                    </div>
+                    <div class="md:col-span-2 text-center mt-4">
+                        <button type="submit" class="bg-white text-blue-600 px-8 py-3 rounded-lg font-semibold hover:bg-blue-50 transition-colors shadow-md flex items-center mx-auto">
+                            <i class="fas fa-paper-plane mr-2"></i> Send Message
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Footer -->
+    <footer class="bg-gray-800 text-white py-8">
+        <div class="container mx-auto px-4">
+            <div class="flex flex-col md:flex-row justify-between items-center mb-8">
+                <div class="flex items-center mb-4 md:mb-0">
+                    <i class="fab fa-bitcoin text-2xl text-blue-400 mr-2"></i>
+                    <span class="text-xl font-bold text-white">BTCX</span>
+                </div>
+                <div class="flex space-x-6">
+                    <a href="https://twitter.com" target="_blank" class="hover:text-blue-400 transition-colors">
+                        <i class="fab fa-x-twitter text-xl"></i>
+                    </a>
+                    <a href="https://discord.com" target="_blank" class="hover:text-blue-400 transition-colors">
+                        <i class="fab fa-discord text-xl"></i>
+                    </a>
+                    <a href="https://github.com" target="_blank" class="hover:text-blue-400 transition-colors">
+                        <i class="fab fa-github text-xl"></i>
+                    </a>
+                </div>
+            </div>
+            <div class="border-t border-gray-700 pt-6 flex flex-col md:flex-row justify-between items-center">
+                <p class="text-gray-400 text-sm mb-4 md:mb-0">&copy; 2025 BTCX Payment Gateway. All rights reserved.</p>
+                <div class="flex space-x-4 text-sm text-gray-400">
+                    <a href="#" class="hover:text-white transition-colors">Privacy Policy</a>
+                    <a href="#" class="hover:text-white transition-colors">Terms of Service</a>
+                    <a href="#" class="hover:text-white transition-colors">Contact Us</a>
+                </div>
+            </div>
+        </div>
+    </footer>
+    
+    <script>
+        function toggleFAQ(id) {
+            const answer = document.getElementById(`faq-answer-${id}`);
+            const icon = document.getElementById(`faq-icon-${id}`);
+            
+            if (answer.classList.contains('hidden')) {
+                answer.classList.remove('hidden');
+                icon.classList.remove('fa-chevron-down');
+                icon.classList.add('fa-chevron-up');
+            } else {
+                answer.classList.add('hidden');
+                icon.classList.remove('fa-chevron-up');
+                icon.classList.add('fa-chevron-down');
+            }
+        }
+
+        // Handle contact form submission
+        document.getElementById('contact-form')?.addEventListener('submit', function(e) {
+            e.preventDefault();
+            const name = document.getElementById('name').value;
+            const email = document.getElementById('email').value;
+            const subject = document.getElementById('subject').value;
+            const message = document.getElementById('message').value;
+            
+            // Here you would typically send this data to your backend
+            console.log('Form submitted:', { name, email, subject, message });
+            
+            // Show success message
+            alert('Thank you for your message! We will get back to you soon.');
+            
+            // Reset form
+            document.getElementById('contact-form').reset();
+        });
+
+        // Handle authentication button
+        document.getElementById('auth-button')?.addEventListener('click', function() {
+            // Connect to Internet Computer authentication
+            console.log('Initiating authentication process');
+            // This would typically use the AuthClient from @dfinity/auth-client
+            // Example: AuthClient.create().then(client => client.login({...}));
+            
+            alert('Authentication feature coming soon!');
+        });
+    </script>
+
+    <!-- Direct script for authentication to avoid module loading issues -->
+    <script>
+        // Initialize variables
+        let authClient;
+        let actor;
+        let isAuthenticated = false;
+
+        // DOM Elements
+        const navAuthButton = document.getElementById('nav-auth-button');
+        const authButton = document.getElementById('auth-button');
+        const paymentForm = document.getElementById('payment-form');
+        const paymentStatus = document.getElementById('payment-status');
+        const paymentDetails = document.getElementById('payment-details');
+
+        // Initialize the auth client
+        async function initAuth() {
+            try {
+                console.log('Starting auth client initialization...');
+                // Make sure the AuthClient class is available
+                if (!window.ic || !window.ic.authClient || !window.ic.authClient.AuthClient) {
+                    console.error('AuthClient not found in window.ic.authClient');
+                    throw new Error('AuthClient not available. Please check your internet connection and try again.');
+                }
+                
+                // Create the auth client
+                authClient = await window.ic.authClient.AuthClient.create();
+                console.log('Auth client created successfully');
+                
+                // Check if the user is already authenticated
+                const authenticated = await authClient.isAuthenticated();
+                updateAuthState(authenticated);
+                console.log('Auth client initialized, authenticated:', authenticated);
+                
+                // Add event listeners to auth buttons after successful initialization
+                if (navAuthButton) {
+                    navAuthButton.addEventListener('click', handleAuth);
+                }
+                if (authButton) {
+                    authButton.addEventListener('click', handleAuth);
+                }
+                
+                // Handle Candid UI login button if present
+                // This checks if we're in the Candid UI context
+                const candidLoginButton = document.querySelector('.login-button');
+                if (candidLoginButton) {
+                    console.log('Candid UI login button found, adding event listener');
+                    candidLoginButton.addEventListener('click', async () => {
+                        try {
+                            await handleCandidAuth();
+                        } catch (error) {
+                            console.error('Candid UI auth error:', error);
+                        }
+                    });
+                }
+            } catch (error) {
+                console.error('Failed to initialize auth client:', error);
+                // Don't show alert on page load, just log the error
+                console.warn('Authentication initialization failed. Will retry when user clicks login.');
+            }
+        }
+
+        // Create actor with the provided identity
+        function createActor(identity) {
+            const agent = new HttpAgent({ identity, host: "http://127.0.0.1:8080" });
+            
+            // When deploying locally, we need to fetch the root key
+            agent.fetchRootKey().catch(err => {
+                console.warn("Unable to fetch root key. Check to ensure that your local replica is running");
+                console.error(err);
+            });
+
+            // Create an actor with the specified interface and canister ID
+            // Use the direct string value to avoid Principal parsing issues
+            return Actor.createActor(idlFactory, {
+                agent,
+                canisterId: "bkyz2-fmaaa-aaaaa-qaaaq-cai",
+            });
+        }
+
+        // Update UI based on authentication state
+        function updateAuthState(authenticated) {
+            isAuthenticated = authenticated;
+            if (authenticated) {
+                if (navAuthButton) navAuthButton.textContent = 'Sign Out';
+                if (authButton) {
+                    authButton.innerHTML = '<i class="fas fa-sign-out-alt mr-2"></i><span>Sign Out</span>';
+                    paymentForm.classList.remove('hidden');
+                }
+            } else {
+                if (navAuthButton) navAuthButton.textContent = 'Sign In';
+                if (authButton) {
+                    authButton.innerHTML = '<i class="fab fa-bitcoin text-xl mr-2"></i><span>Sign in with Bitcoin</span>';
+                    paymentForm.classList.add('hidden');
+                }
+                paymentStatus.classList.add('hidden');
+            }
+        }
+
+        // Initialize the actor
+        async function initActor() {
+            try {
+                const identity = await authClient.getIdentity();
+                actor = createActor(identity);
+                console.log("Actor initialized with identity", identity.getPrincipal().toString());
+                
+                // For demo purposes, simulate successful connection
+                alert('Successfully connected to the backend canister!');
+            } catch (error) {
+                console.error("Failed to initialize actor:", error);
+                alert('Failed to connect to the backend. Please try again.');
+            }
+        }
+
+        // Handle authentication for the main app
+        async function handleAuth() {
+            if (!authClient) {
+                console.log("Auth client not initialized, attempting to initialize now...");
+                try {
+                    // Try to initialize the auth client on demand
+                    authClient = await window.ic.authClient.AuthClient.create();
+                    console.log('Auth client created successfully on demand');
+                } catch (error) {
+                    console.error("Failed to initialize auth client on demand:", error);
+                    alert("Could not initialize authentication. Please check your internet connection and try again.");
+                    return;
+                }
+            }
+            
+            try {
+                if (isAuthenticated) {
+                    await authClient.logout();
+                    actor = null;
+                    updateAuthState(false);
+                    console.log("User logged out");
+                } else {
+                    // Use the Internet Identity service for authentication
+                    const identityProvider = `http://127.0.0.1:8080?canisterId=${INTERNET_IDENTITY_CANISTER_ID}`;
+                    console.log("Using identity provider:", identityProvider);
+                    
+                    // Open the Internet Identity login window
+                    await authClient.login({
+                        identityProvider,
+                        onSuccess: async () => {
+                            // Get the identity from the auth client
+                            const identity = authClient.getIdentity();
+                            console.log("Got identity:", identity);
+                            
+                            // Initialize actor with the authenticated identity
+                            actor = createActor(identity);
+                            updateAuthState(true);
+                            console.log("User authenticated with Internet Identity");
+                            alert("Successfully authenticated with Internet Identity");
+                        },
+                        onError: (error) => {
+                            console.error("Login failed:", error);
+                            alert("Login failed: " + error.message);
+                        }
+                    });
+                }
+            } catch (error) {
+                console.error("Authentication error:", error);
+                alert("Authentication error: " + error.message);
+            }
+        }
+        
+        // Handle authentication specifically for Candid UI
+        async function handleCandidAuth() {
+            console.log("Handling Candid UI authentication");
+            if (!authClient) {
+                try {
+                    // Create auth client if it doesn't exist
+                    authClient = await window.ic.authClient.AuthClient.create();
+                    console.log('Auth client created for Candid UI');
+                } catch (error) {
+                    console.error("Failed to create auth client for Candid UI:", error);
+                    return;
+                }
+            }
+            
+            try {
+                // Use the Internet Identity service for authentication
+                const identityProvider = `http://127.0.0.1:8080?canisterId=${INTERNET_IDENTITY_CANISTER_ID}`;
+                console.log("Candid UI using identity provider:", identityProvider);
+                
+                // Open the Internet Identity login window for Candid UI
+                await authClient.login({
+                    identityProvider,
+                    onSuccess: () => {
+                        console.log("Candid UI authentication successful");
+                        // Reload the page to apply the new identity to Candid UI
+                        window.location.reload();
+                    },
+                    onError: (error) => {
+                        console.error("Candid UI login failed:", error);
+                    }
+                });
+            } catch (error) {
+                console.error("Candid UI authentication error:", error);
+            }
+        }
+
+        // Define the interface for the backend canister
+        const idlFactory = ({ IDL }) => {
+            return IDL.Service({
+                'createPaymentRequest': IDL.Func(
+                    [IDL.Nat64, IDL.Text, IDL.Text],
+                    [IDL.Text],
+                    [],
+                ),
+                'getPaymentDetails': IDL.Func(
+                    [IDL.Text],
+                    [
+                        IDL.Opt(
+                            IDL.Record({
+                                'amount': IDL.Nat64,
+                                'memo': IDL.Text,
+                                'payer': IDL.Principal,
+                                'recipient': IDL.Text,
+                                'status': IDL.Text,
+                                'timestamp': IDL.Int,
+                            })
+                        ),
+                    ],
+                    ['query'],
+                ),
+                'healthCheck': IDL.Func([], [IDL.Bool], ['query']),
+                'listUserPayments': IDL.Func(
+                    [IDL.Principal],
+                    [
+                        IDL.Vec(
+                            IDL.Tuple(
+                                IDL.Text,
+                                IDL.Record({
+                                    'amount': IDL.Nat64,
+                                    'memo': IDL.Text,
+                                    'payer': IDL.Principal,
+                                    'recipient': IDL.Text,
+                                    'status': IDL.Text,
+                                    'timestamp': IDL.Int,
+                                })
+                            )
+                        ),
+                    ],
+                    ['query'],
+                ),
+                'updatePaymentStatus': IDL.Func([IDL.Text, IDL.Text], [IDL.Bool], []),
+            });
+        };
+
+        // Add event listeners
+        document.addEventListener('DOMContentLoaded', () => {
+            console.log('DOM fully loaded');
+            
+            // Initialize authentication with a slight delay to ensure all scripts are loaded
+            setTimeout(() => {
+                console.log('Initializing auth after delay...');
+                initAuth();
+                
+                // Check if we're in Candid UI and inject our authentication handler
+                const isCandidUI = document.querySelector('.candid-header') || 
+                                  document.querySelector('.candid-toolbar') || 
+                                  document.title.includes('Candid');
+                                  
+                if (isCandidUI) {
+                    console.log('Detected Candid UI, setting up auth integration');
+                    setupCandidUIAuth();
+                }
+            }, 1000);
+            
+            // We'll add event listeners in the initAuth function after successful initialization
+            // This ensures we don't try to use the auth client before it's ready
+            
+            // Function to set up Candid UI authentication integration
+            function setupCandidUIAuth() {
+                // Wait for Candid UI to fully load
+                const checkForLoginButton = setInterval(() => {
+                    const loginButton = document.querySelector('.login-button') || 
+                                        document.querySelector('button[aria-label="Login"]') ||
+                                        document.querySelector('button:contains("LOGIN")');
+                                        
+                    if (loginButton) {
+                        clearInterval(checkForLoginButton);
+                        console.log('Found Candid UI login button, attaching handler');
+                        
+                        // Replace the original click handler
+                        loginButton.addEventListener('click', (event) => {
+                            event.preventDefault();
+                            event.stopPropagation();
+                            console.log('Candid UI login button clicked');
+                            handleCandidAuth();
+                            return false;
+                        }, true);
+                    }
+                }, 500);
+                
+                // Timeout after 10 seconds if button not found
+                setTimeout(() => clearInterval(checkForLoginButton), 10000);
+            }
+            
+            // Handle payment form submission
+            if (document.getElementById('submit-payment')) {
+                document.getElementById('submit-payment').addEventListener('click', async () => {
+                    try {
+                        const amount = BigInt(Math.floor(parseFloat(document.getElementById('amount').value) * 100000000));
+                        const recipient = document.getElementById('recipient').value;
+                        const memo = document.getElementById('memo').value;
+                        
+                        if (!amount || !recipient) {
+                            alert('Please fill in all required fields');
+                            return;
+                        }
+                        
+                        // For demo purposes, simulate a successful payment request
+                        alert('Payment request created successfully!');
+                        
+                        // Display payment details
+                        paymentStatus.classList.remove('hidden');
+                        paymentDetails.innerHTML = `
+                            <div class="flex justify-between">
+                                <span class="font-semibold">Amount:</span>
+                                <span>${document.getElementById('amount').value} BTC</span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span class="font-semibold">Recipient:</span>
+                                <span class="text-sm break-all">${recipient}</span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span class="font-semibold">Status:</span>
+                                <span class="text-yellow-500">Pending</span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span class="font-semibold">Request ID:</span>
+                                <span class="text-sm break-all">demo-payment-id-${Date.now()}</span>
+                            </div>
+                        `;
+                    } catch (error) {
+                        console.error('Error creating payment request:', error);
+                        alert('Error creating payment request: ' + error.message);
+                    }
+                });
+            }
+        });
+    </script>
+</body>
+</html>
