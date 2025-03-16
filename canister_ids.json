@@ -1,0 +1,14 @@
+{
+  "btc_payment": {
+    "ic": "35rgg-caaaa-aaaad-qg6za-cai"
+  },
+  "frontend": {
+    "ic": "32qas-pyaaa-aaaad-qg6zq-cai"
+  },
+  "icpesa_frontend": {
+    "ic": "2q7ci-niaaa-aaaad-qg66q-cai"
+  },
+  "icpesa_payment": {
+    "ic": "2x6e4-aqaaa-aaaad-qg66a-cai"
+  }
+}

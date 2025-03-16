@@ -1,24 +1,17 @@
 {
   "canisters": {
-    "btc_payment": {
-      "type": "motoko",
-      "main": "src/btc_payment/main.mo"
+    "icpesa_payment": {
+      "main": "src/btc_payment/main.mo",
+      "type": "motoko"
     },
-    "frontend": {
-      "type": "assets",
-      "source": ["src/frontend/assets"],
-      "dependencies": ["btc_payment", "internet_identity"]
-    },
-    "internet_identity": {
-      "type": "custom",
-      "candid": "https://github.com/dfinity/internet-identity/releases/latest/download/internet_identity.did",
-      "wasm": "https://github.com/dfinity/internet-identity/releases/latest/download/internet_identity_dev.wasm.gz",
-      "shrink": false,
-      "remote": {
-        "id": {
-          "ic": "rdmx6-jaaaa-aaaaa-aaadq-cai"
-        }
-      }
+    "icpesa_frontend": {
+      "dependencies": [
+        "icpesa_payment"
+      ],
+      "source": [
+        "src/frontend/assets"
+      ],
+      "type": "assets"
     }
   },
   "defaults": {
@@ -29,8 +22,12 @@
   },
   "networks": {
     "local": {
-      "bind": "127.0.0.1:8080",
+      "bind": "127.0.0.1:8000",
       "type": "ephemeral"
+    },
+    "ic": {
+      "providers": ["https://mainnet.dfinity.network"],
+      "type": "persistent"
     }
   },
   "version": 1

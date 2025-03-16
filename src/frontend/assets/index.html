@@ -3,18 +3,350 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>BTCX - Bitcoin Payment Gateway</title>
+    <title>ICPesa - Bitcoin Payment Gateway</title>
     <meta name="description" content="A secure, non-custodial Bitcoin payment gateway using Internet Computer Protocol">
     <meta name="keywords" content="Bitcoin, Payment, Gateway, ICP, Internet Computer, Blockchain">
     <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <link rel="stylesheet" href="./css/styles.css">
-    <!-- Internet Computer dependencies -->
-    <script src="https://unpkg.com/@dfinity/agent@0.15.4/dist/index.js"></script>
-    <script src="https://unpkg.com/@dfinity/auth-client@0.15.4/dist/index.js"></script>
-    <script src="https://unpkg.com/@dfinity/principal@0.15.4/dist/index.js"></script>
+    <!-- QR Code library for BTC addresses -->
+    <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.min.js"></script>
+    <!-- Include our custom implementations -->
+    <script src="js/internet-identity.js"></script>
+    <script src="js/ckbtc-integration.js"></script>
+    <script src="js/ckbtc-ui.js"></script>
+    <script>
+        // List of CDNs to try in order of preference
+        const CDN_SOURCES = [
+            'https://cdn.jsdelivr.net/npm',
+            'https://unpkg.com',
+            'https://cdnjs.cloudflare.com/ajax/libs/dfinity-agent',
+            'https://esm.sh',
+            'https://icp-api.io/cdn',
+            'https://ic0.app/cdn'
+        ];
+        
+        // Required packages with their versions
+        const REQUIRED_PACKAGES = [
+            { name: '@dfinity/agent', version: '0.15.4', path: '/dist/index.js' },
+            { name: '@dfinity/auth-client', version: '0.15.4', path: '/dist/index.js' },
+            { name: '@dfinity/principal', version: '0.15.4', path: '/dist/index.js' }
+        ];
+        
+        // Direct URLs for fallback if CDNs fail
+        const DIRECT_SCRIPT_URLS = [
+            'https://cdn.jsdelivr.net/npm/@dfinity/agent@0.15.4/dist/index.js',
+            'https://cdn.jsdelivr.net/npm/@dfinity/auth-client@0.15.4/dist/index.js',
+            'https://cdn.jsdelivr.net/npm/@dfinity/principal@0.15.4/dist/index.js',
+            'https://unpkg.com/@dfinity/agent@0.15.4/dist/index.js',
+            'https://unpkg.com/@dfinity/auth-client@0.15.4/dist/index.js',
+            'https://unpkg.com/@dfinity/principal@0.15.4/dist/index.js'
+        ];
+        
+        // Function to load a script with multiple fallback options
+        async function loadScriptWithFallbacks(packageInfo) {
+            let loaded = false;
+            let lastError = null;
+            
+            // Try each CDN source until one works
+            for (const cdn of CDN_SOURCES) {
+                if (loaded) break;
+                
+                // Construct the URL based on the CDN pattern
+                let url;
+                if (cdn.includes('cdnjs')) {
+                    // cdnjs has a different URL pattern
+                    url = `${cdn}/${packageInfo.version}${packageInfo.path}`;
+                } else {
+                    url = `${cdn}/${packageInfo.name}@${packageInfo.version}${packageInfo.path}`;
+                }
+                
+                try {
+                    await new Promise((resolve, reject) => {
+                        const script = document.createElement('script');
+                        script.src = url;
+                        script.async = true;
+                        script.crossOrigin = 'anonymous'; // Add CORS support
+                        const timeoutId = setTimeout(() => {
+                            console.warn(`Timeout loading from ${url}`);
+                            reject(new Error('Timeout'));
+                        }, 5000); // 5 second timeout
+                        
+                        script.onload = () => {
+                            clearTimeout(timeoutId);
+                            console.log(`Successfully loaded: ${url}`);
+                            loaded = true;
+                            resolve();
+                        };
+                        script.onerror = (error) => {
+                            clearTimeout(timeoutId);
+                            console.warn(`Failed to load from ${url}`, error);
+                            lastError = error;
+                            reject(error);
+                        };
+                        document.head.appendChild(script);
+                    });
+                } catch (error) {
+                    // Continue to the next CDN
+                    console.warn(`Failed to load ${packageInfo.name} from ${cdn}`);
+                }
+            }
+            
+            return loaded;
+        }
+        
+        // Helper function to load a single script directly
+        async function loadScriptDirectly(url) {
+            return new Promise((resolve, reject) => {
+                const script = document.createElement('script');
+                script.src = url;
+                script.async = true;
+                script.crossOrigin = 'anonymous';
+                const timeoutId = setTimeout(() => {
+                    console.warn(`Timeout loading from ${url}`);
+                    reject(new Error('Timeout'));
+                }, 5000);
+                
+                script.onload = () => {
+                    clearTimeout(timeoutId);
+                    console.log(`Successfully loaded direct script: ${url}`);
+                    resolve(true);
+                };
+                script.onerror = (error) => {
+                    clearTimeout(timeoutId);
+                    console.warn(`Failed to load direct script: ${url}`, error);
+                    reject(error);
+                };
+                document.head.appendChild(script);
+            });
+        }
+        
+        // Load all required packages with multiple fallback strategies
+        async function loadAllPackages() {
+            try {
+                console.log('Loading Internet Computer dependencies...');
+                
+                // First try: Load using CDN pattern
+                try {
+                    const results = await Promise.allSettled(REQUIRED_PACKAGES.map(pkg => loadScriptWithFallbacks(pkg)));
+                    const allSucceeded = results.every(result => result.status === 'fulfilled' && result.value === true);
+                    
+                    if (allSucceeded) {
+                        console.log('All dependencies loaded successfully using CDN pattern');
+                        return true;
+                    } else {
+                        console.warn('Some dependencies failed to load using CDN pattern, trying direct URLs...');
+                    }
+                } catch (error) {
+                    console.warn('Failed to load dependencies using CDN pattern:', error);
+                }
+                
+                // Second try: Load using direct URLs
+                try {
+                    const directResults = await Promise.allSettled(DIRECT_SCRIPT_URLS.map(url => loadScriptDirectly(url)));
+                    const someSucceeded = directResults.some(result => result.status === 'fulfilled' && result.value === true);
+                    
+                    if (someSucceeded) {
+                        console.log('Some dependencies loaded successfully using direct URLs');
+                        return true;
+                    } else {
+                        console.error('All direct URL loading attempts failed');
+                    }
+                } catch (error) {
+                    console.error('Error during direct URL loading:', error);
+                }
+                
+                // Third try: Embed the scripts directly if available locally
+                console.log('Attempting to use locally embedded scripts...');
+                
+                // Check if any of the required objects are already available
+                if ((window.ic && window.ic.agent) || window.AuthClient || window.Principal) {
+                    console.log('Some dependencies appear to be already available');
+                    return true;
+                }
+                
+                console.error('Failed to load required packages');
+                return false;
+            } catch (error) {
+                console.error('Failed to load all required dependencies:', error);
+                return false;
+            }
+        }
+        
+        // Initialize when DOM is loaded with retry mechanism
+        document.addEventListener('DOMContentLoaded', async () => {
+            try {
+                console.log('DOM loaded, starting initialization...');
+                
+                // First attempt: Load all required packages
+                let packagesLoaded = await loadAllPackages();
+                if (packagesLoaded) {
+                    console.log('All packages loaded, initializing Internet Identity...');
+                    // Wait a moment for scripts to initialize
+                    await new Promise(resolve => setTimeout(resolve, 1000));
+                    
+                    // Initialize auth client
+                    const authInitialized = await initializeAuthClient();
+                    if (authInitialized) {
+                        console.log('Internet Identity initialized successfully');
+                    } else {
+                        console.warn('Failed to initialize Internet Identity on first attempt, will retry...');
+                        // Retry after a delay
+                        setTimeout(async () => {
+                            console.log('Retrying Internet Identity initialization...');
+                            await initializeAuthClient();
+                        }, 2000);
+                    }
+                } else {
+                    console.error('Failed to load required packages on first attempt, will retry...');
+                    // Retry package loading with a delay
+                    setTimeout(async () => {
+                        console.log('Retrying package loading...');
+                        packagesLoaded = await loadAllPackages();
+                        if (packagesLoaded) {
+                            await new Promise(resolve => setTimeout(resolve, 1000));
+                            await initializeAuthClient();
+                        } else {
+                            console.error('Failed to load packages after retry');
+                        }
+                    }, 3000);
+                }
+            } catch (error) {
+                console.error('Error during initialization:', error);
+            }
+        });
+        
+        // Function to initialize auth client with multiple fallback strategies
+        async function initializeAuthClient() {
+            try {
+                console.log('Initializing AuthClient...');
+                
+                // First attempt: Check which object is available
+                if (window.ic && window.ic.agent && window.ic.agent.AuthClient) {
+                    try {
+                        window.authClient = await window.ic.agent.AuthClient.create();
+                        console.log('AuthClient created via ic.agent.AuthClient');
+                        checkAuthenticationStatus();
+                        return true;
+                    } catch (e) {
+                        console.warn('Failed to create AuthClient via ic.agent.AuthClient:', e);
+                    }
+                }
+                
+                // Second attempt: Try window.AuthClient
+                if (window.AuthClient) {
+                    try {
+                        window.authClient = await window.AuthClient.create();
+                        console.log('AuthClient created via window.AuthClient');
+                        checkAuthenticationStatus();
+                        return true;
+                    } catch (e) {
+                        console.warn('Failed to create AuthClient via window.AuthClient:', e);
+                    }
+                }
+                
+                // Third attempt: Try ic.auth.AuthClient
+                if (window.ic && window.ic.auth && window.ic.auth.AuthClient) {
+                    try {
+                        window.authClient = await window.ic.auth.AuthClient.create();
+                        console.log('AuthClient created via ic.auth.AuthClient');
+                        checkAuthenticationStatus();
+                        return true;
+                    } catch (e) {
+                        console.warn('Failed to create AuthClient via ic.auth.AuthClient:', e);
+                    }
+                }
+                
+                // Last attempt: Try to load scripts again
+                console.log('No AuthClient found, trying to reload dependencies...');
+                const packagesLoaded = await loadAllPackages();
+                if (packagesLoaded) {
+                    // Wait a bit for scripts to initialize
+                    await new Promise(resolve => setTimeout(resolve, 1000));
+                    
+                    // Try again with the newly loaded scripts
+                    if (window.ic && window.ic.agent && window.ic.agent.AuthClient) {
+                        window.authClient = await window.ic.agent.AuthClient.create();
+                        console.log('AuthClient created via ic.agent.AuthClient after reload');
+                        checkAuthenticationStatus();
+                        return true;
+                    } else if (window.AuthClient) {
+                        window.authClient = await window.AuthClient.create();
+                        console.log('AuthClient created via window.AuthClient after reload');
+                        checkAuthenticationStatus();
+                        return true;
+                    } else if (window.ic && window.ic.auth && window.ic.auth.AuthClient) {
+                        window.authClient = await window.ic.auth.AuthClient.create();
+                        console.log('AuthClient created via ic.auth.AuthClient after reload');
+                        checkAuthenticationStatus();
+                        return true;
+                    }
+                }
+                
+                throw new Error('AuthClient not found in any expected location after all attempts');
+            } catch (error) {
+                console.error('Error creating AuthClient after multiple attempts:', error);
+                return false;
+            }
+        }
+        
+        // Check if user is already authenticated
+        async function checkAuthenticationStatus() {
+            try {
+                if (!window.authClient) {
+                    console.error('AuthClient not initialized');
+                    return;
+                }
+                
+                const isAuthenticated = await window.authClient.isAuthenticated();
+                console.log('User is authenticated:', isAuthenticated);
+                
+                if (isAuthenticated) {
+                    const identity = window.authClient.getIdentity();
+                    const principal = identity.getPrincipal().toString();
+                    console.log('User principal:', principal);
+                    
+                    // Store authentication info
+                    localStorage.setItem('icpesa_authenticated', 'true');
+                    localStorage.setItem('icpesa_principal', principal);
+                    localStorage.setItem('icpesa_wallet_provider', 'Internet Identity');
+                    
+                    // Set global authentication state
+                    window.isAuthenticated = true;
+                    
+                    // Update UI
+                    if (typeof updateAuthUI === 'function') {
+                        updateAuthUI(true);
+                        // Load dashboard data
+                        if (typeof loadDashboardData === 'function') {
+                            loadDashboardData();
+                        }
+                    }
+                } else {
+                    // Update UI for unauthenticated state
+                    if (typeof updateAuthUI === 'function') {
+                        updateAuthUI(false);
+                    }
+                }
+            } catch (error) {
+                console.error('Error checking authentication status:', error);
+            }
+        }
+    </script>
+    
+    <!-- Internet Identity Integration -->
+    <script type="text/javascript">
+        // Global Internet Identity URL
+        window.INTERNET_IDENTITY_URL = 'https://identity.ic0.app';
+        // ckBTC canister ID
+        const CKBTC_CANISTER_ID = 'mxzaz-hqaaa-aaaar-qaada-cai';
+        const APP_HOMEPAGE = 'https://32qas-pyaaa-aaaad-qg6zq-cai.icp0.io/';
+    </script>
     
     <script>
+        // Define global variables
+        window.INTERNET_IDENTITY_URL = 'https://identity.ic0.app';
+        
         // Make IC libraries available globally
         // Initialize the global ic object properly
         window.ic = window.ic || {};
@@ -22,13 +354,41 @@
         window.ic.agent.Actor = Actor;
         window.ic.agent.HttpAgent = HttpAgent;
         window.ic.authClient = window.ic.authClient || {};
-        window.ic.authClient.AuthClient = AuthClient;
+        
+        // Ensure AuthClient is properly defined and accessible
+        if (typeof AuthClient !== 'undefined') {
+            window.ic.authClient.AuthClient = AuthClient;
+        } else if (typeof window.AuthClient !== 'undefined') {
+            window.ic.authClient.AuthClient = window.AuthClient;
+            AuthClient = window.AuthClient;
+        }
+        
         window.ic.Principal = window.ic.Principal || {};
         window.ic.Principal.Principal = Principal;
         
-        // Set canister IDs - make sure they don't have any trailing characters
-        const BTC_PAYMENT_CANISTER_ID = 'bkyz2-fmaaa-aaaaa-qaaaq-cai';
-        const INTERNET_IDENTITY_CANISTER_ID = 'br5f7-7uaaa-aaaaa-qaaca-cai';
+        // Set canister IDs for mainnet deployment
+        const BTC_PAYMENT_CANISTER_ID = '35rgg-caaaa-aaaad-qg6za-cai';
+        const INTERNET_IDENTITY_CANISTER_ID = 'rdmx6-jaaaa-aaaaa-aaadq-cai';
+        // Internet Identity URL is already defined above;
+
+        // Helper function to dynamically load scripts
+        async function loadScriptDynamically(url) {
+            console.log(`Loading script: ${url}`);
+            return new Promise((resolve, reject) => {
+                const script = document.createElement('script');
+                script.src = url;
+                script.async = true;
+                script.onload = () => {
+                    console.log(`Successfully loaded: ${url}`);
+                    resolve();
+                };
+                script.onerror = (error) => {
+                    console.error(`Failed to load script: ${url}`, error);
+                    reject(error);
+                };
+                document.head.appendChild(script);
+            });
+        }
     </script>
     <style>
         .gradient-bg {
@@ -46,20 +406,21 @@
             <div class="flex items-center">
                 <a href="#" class="flex items-center group">
                     <div class="bg-blue-600 text-white p-2 rounded-full mr-2 group-hover:bg-blue-700 transition-colors">
-                        <i class="fab fa-bitcoin text-xl"></i>
+                        <i class="fas fa-wallet text-xl"></i>
                     </div>
-                    <span class="text-xl font-bold text-blue-600 group-hover:text-blue-700 transition-colors">BTCX</span>
+                    <span class="text-xl font-bold text-blue-600 group-hover:text-blue-700 transition-colors">ICPesa</span>
                 </a>
-                <div class="hidden md:flex ml-10 space-x-6">
+                <div class="md:flex ml-10 space-x-6">
                     <a href="#how-it-works" class="px-3 py-2 text-gray-700 hover:text-blue-600 hover:bg-blue-50 rounded-md transition-all font-medium">How it works</a>
                     <a href="#integration" class="px-3 py-2 text-gray-700 hover:text-blue-600 hover:bg-blue-50 rounded-md transition-all font-medium">Integration</a>
                     <a href="#pricing" class="px-3 py-2 text-gray-700 hover:text-blue-600 hover:bg-blue-50 rounded-md transition-all font-medium">Pricing</a>
                     <a href="#industries" class="px-3 py-2 text-gray-700 hover:text-blue-600 hover:bg-blue-50 rounded-md transition-all font-medium">Industries</a>
                     <a href="#contact" class="px-3 py-2 text-gray-700 hover:text-blue-600 hover:bg-blue-50 rounded-md transition-all font-medium">Contact Us</a>
+                    <a href="#dashboard" id="dashboard-link" class="px-3 py-2 text-gray-700 hover:text-blue-600 hover:bg-blue-50 rounded-md transition-all font-medium hidden">Dashboard</a>
                 </div>
             </div>
             <div class="flex items-center space-x-3">
-                <a href="http://127.0.0.1:8080/?canisterId=be2us-64aaa-aaaaa-qaabq-cai&id=bkyz2-fmaaa-aaaaa-qaaaq-cai" target="_blank" class="px-3 py-2 text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded-md transition-all font-medium flex items-center">
+                <a href="https://a4gq6-oaaaa-aaaab-qaa4q-cai.raw.icp0.io/?id=35rgg-caaaa-aaaad-qg6za-cai" target="_blank" class="px-3 py-2 text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded-md transition-all font-medium flex items-center">
                     <i class="fas fa-code mr-2"></i> Candid UI
                 </a>
                 <button id="nav-auth-button" class="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 transition-colors flex items-center shadow-md">
@@ -74,9 +435,9 @@
         <div class="container mx-auto px-4 relative">
             <header class="text-center">
                 <div class="inline-block bg-white/10 backdrop-blur-sm p-4 rounded-full mb-6">
-                    <i class="fab fa-bitcoin text-5xl text-white"></i>
+                    <i class="fas fa-wallet text-5xl text-white"></i>
                 </div>
-                <h1 class="text-5xl font-bold text-white mb-6">BTCX Payment Gateway</h1>
+                <h1 class="text-5xl font-bold text-white mb-6">ICPesa Payment Gateway</h1>
                 <p class="text-2xl text-white/90 mb-10 max-w-2xl mx-auto">Accept Bitcoin payments seamlessly with our secure, non-custodial solution.</p>
                 <div class="flex justify-center space-x-4">
                     <a href="#how-it-works" class="bg-white text-blue-600 px-8 py-4 rounded-lg font-semibold hover:bg-gray-100 transition-colors shadow-lg flex items-center">
@@ -121,6 +482,8 @@
         <h2 class="text-3xl font-bold text-center mb-8 text-gray-800">Create a Payment Request</h2>
         <p class="text-center text-gray-600 max-w-2xl mx-auto mb-10">Our secure, non-custodial Bitcoin payment gateway allows you to accept payments from anywhere in the world with minimal fees and lightning-fast transactions.</p>
         
+
+        
         <div class="max-w-md mx-auto bg-white rounded-xl shadow-2xl p-8 border border-gray-100">
             <div class="flex justify-between items-center mb-6">
                 <h3 class="text-xl font-bold text-gray-800">Payment Gateway</h3>
@@ -137,12 +500,28 @@
             <div id="payment-form" class="space-y-6 hidden">
                 <div>
                     <label class="block text-gray-700 text-sm font-bold mb-2" for="amount">
-                        Amount (BTC)
+                        Amount
                     </label>
                     <div class="relative">
-                        <input type="number" id="amount" step="0.00000001" 
+                        <input type="number" id="amount" step="0.00000001" value="0.001"
                                class="w-full p-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 pl-10">
                         <i class="fab fa-bitcoin absolute left-3 top-3.5 text-gray-400"></i>
+                    </div>
+                </div>
+                
+                <div>
+                    <label class="block text-gray-700 text-sm font-bold mb-2">
+                        Currency
+                    </label>
+                    <div class="flex space-x-4">
+                        <label class="inline-flex items-center">
+                            <input type="radio" name="currency" id="currency-btc" value="BTC" class="form-radio text-blue-600" checked>
+                            <span class="ml-2">BTC</span>
+                        </label>
+                        <label class="inline-flex items-center">
+                            <input type="radio" name="currency" id="currency-ckbtc" value="ckBTC" class="form-radio text-blue-600">
+                            <span class="ml-2">ckBTC</span>
+                        </label>
                     </div>
                 </div>
 
@@ -150,8 +529,9 @@
                     <label class="block text-gray-700 text-sm font-bold mb-2" for="recipient">
                         Recipient Address
                     </label>
-                    <input type="text" id="recipient" 
+                    <input type="text" id="recipient" value="bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh"
                            class="w-full p-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500">
+                    <p class="text-xs text-gray-500 mt-1">Enter a Bitcoin address for BTC payments or an ICP principal for ckBTC payments</p>
                 </div>
 
                 <div>
@@ -159,10 +539,10 @@
                         Memo (Optional)
                     </label>
                     <textarea id="memo" 
-                              class="w-full p-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 h-24 resize-none"></textarea>
+                              class="w-full p-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 h-24 resize-none">Payment for services</textarea>
                 </div>
 
-                <button id="submit-payment" class="w-full bg-gradient-to-r from-blue-500 to-blue-600 text-white py-3 px-6 rounded-lg hover:from-blue-600 hover:to-blue-700 transition-all duration-300 font-semibold">
+                <button id="submit-payment" onclick="createPaymentRequest()" class="w-full bg-gradient-to-r from-blue-500 to-blue-600 text-white py-3 px-6 rounded-lg hover:from-blue-600 hover:to-blue-700 transition-all duration-300 font-semibold">
                     Create Payment Request
                 </button>
             </div>
@@ -204,59 +584,99 @@
         </div>
     </div>
 
-    <!-- Contact Us Section -->
-    <div class="bg-gray-100 py-16" id="contact">
+    <!-- Integration Section -->
+    <div id="integration" class="bg-white py-16">
         <div class="container mx-auto px-4">
-            <h2 class="text-3xl font-bold text-center mb-12 text-gray-800">Contact Us</h2>
-            <div class="max-w-2xl mx-auto bg-white rounded-xl shadow-lg overflow-hidden">
-                <div class="md:flex">
-                    <div class="md:w-1/3 bg-blue-600 text-white p-8">
-                        <h3 class="text-xl font-bold mb-4">Get in Touch</h3>
-                        <p class="mb-6">Have questions about our services? Fill out the form and our team will get back to you shortly.</p>
-                        <div class="space-y-4">
-                            <div class="flex items-start">
-                                <i class="fas fa-envelope mt-1 mr-3"></i>
-                                <span>support@btcx.com</span>
-                            </div>
-                            <div class="flex items-start">
-                                <i class="fas fa-phone-alt mt-1 mr-3"></i>
-                                <span>+1 (555) 123-4567</span>
-                            </div>
-                            <div class="flex items-start">
-                                <i class="fas fa-map-marker-alt mt-1 mr-3"></i>
-                                <span>123 Blockchain Ave, San Francisco, CA</span>
-                            </div>
-                        </div>
+            <h2 class="text-3xl font-bold text-center mb-8 text-gray-800">Easy Integration</h2>
+            <p class="text-center text-gray-600 max-w-2xl mx-auto mb-12">Integrate our Bitcoin payment gateway into your application with just a few lines of code.</p>
+            
+            <div class="max-w-4xl mx-auto bg-gray-800 rounded-xl shadow-lg overflow-hidden p-6">
+                <pre class="text-green-400 overflow-x-auto p-4 text-sm">
+<code>// Initialize the ICPesa payment gateway
+const icpesa = new ICPesaPayment({
+  apiKey: 'YOUR_API_KEY',
+  environment: 'production'
+});
+
+// Create a payment request
+const paymentRequest = await icpesa.createPayment({
+  amount: 0.001, // Amount
+  currency: 'BTC', // BTC or ckBTC
+  recipient: 'bc1q...', // Bitcoin address or ICP principal
+  memo: 'Payment for order #1234'
+});
+
+// Get payment status
+const status = await icpesa.getPaymentStatus(paymentRequest.id);</code>
+                </pre>
+            </div>
+            
+            <div class="mt-12 grid grid-cols-1 md:grid-cols-3 gap-8">
+                <div class="bg-white p-6 rounded-xl shadow-md border border-gray-200">
+                    <div class="flex items-center mb-4">
+                        <i class="fab fa-js text-3xl text-yellow-500 mr-3"></i>
+                        <h3 class="text-xl font-semibold">JavaScript</h3>
                     </div>
-                    <div class="md:w-2/3 p-8">
-                        <form id="contact-form" class="space-y-6">
-                            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                <div>
-                                    <label for="name" class="block text-sm font-medium text-gray-700 mb-1">Full Name</label>
-                                    <input type="text" id="name" name="name" class="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="John Doe" required>
-                                </div>
-                                <div>
-                                    <label for="email" class="block text-sm font-medium text-gray-700 mb-1">Email Address</label>
-                                    <input type="email" id="email" name="email" class="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="john@example.com" required>
-                                </div>
-                            </div>
-                            <div>
-                                <label for="subject" class="block text-sm font-medium text-gray-700 mb-1">Subject</label>
-                                <input type="text" id="subject" name="subject" class="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="How can we help you?" required>
-                            </div>
-                            <div>
-                                <label for="message" class="block text-sm font-medium text-gray-700 mb-1">Message</label>
-                                <textarea id="message" name="message" rows="4" class="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="Your message here..." required></textarea>
-                            </div>
-                            <div>
-                                <button type="submit" class="w-full bg-blue-600 text-white px-6 py-3 rounded-lg font-semibold hover:bg-blue-700 transition-colors">Send Message</button>
-                            </div>
-                        </form>
+                    <p class="text-gray-600">Simple JavaScript SDK for web applications</p>
+                </div>
+                <div class="bg-white p-6 rounded-xl shadow-md border border-gray-200">
+                    <div class="flex items-center mb-4">
+                        <i class="fab fa-node-js text-3xl text-green-600 mr-3"></i>
+                        <h3 class="text-xl font-semibold">Node.js</h3>
                     </div>
+                    <p class="text-gray-600">Server-side integration for Node.js applications</p>
+                </div>
+                <div class="bg-white p-6 rounded-xl shadow-md border border-gray-200">
+                    <div class="flex items-center mb-4">
+                        <i class="fas fa-code text-3xl text-purple-600 mr-3"></i>
+                        <h3 class="text-xl font-semibold">REST API</h3>
+                    </div>
+                    <p class="text-gray-600">Simple REST API for any programming language</p>
                 </div>
             </div>
         </div>
     </div>
+    
+    <!-- Industries Section -->
+    <div id="industries" class="bg-gray-100 py-16">
+        <div class="container mx-auto px-4">
+            <h2 class="text-3xl font-bold text-center mb-8 text-gray-800">Industries We Serve</h2>
+            <p class="text-center text-gray-600 max-w-2xl mx-auto mb-12">Our Bitcoin payment gateway is designed to meet the needs of various industries.</p>
+            
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
+                <div class="bg-white p-6 rounded-xl shadow-lg text-center">
+                    <div class="bg-blue-100 p-4 rounded-full inline-block mb-4">
+                        <i class="fas fa-shopping-cart text-3xl text-blue-600"></i>
+                    </div>
+                    <h3 class="text-xl font-semibold mb-2">E-Commerce</h3>
+                    <p class="text-gray-600">Accept Bitcoin payments for your online store</p>
+                </div>
+                <div class="bg-white p-6 rounded-xl shadow-lg text-center">
+                    <div class="bg-green-100 p-4 rounded-full inline-block mb-4">
+                        <i class="fas fa-gamepad text-3xl text-green-600"></i>
+                    </div>
+                    <h3 class="text-xl font-semibold mb-2">Gaming</h3>
+                    <p class="text-gray-600">In-game purchases and marketplace transactions</p>
+                </div>
+                <div class="bg-white p-6 rounded-xl shadow-lg text-center">
+                    <div class="bg-purple-100 p-4 rounded-full inline-block mb-4">
+                        <i class="fas fa-palette text-3xl text-purple-600"></i>
+                    </div>
+                    <h3 class="text-xl font-semibold mb-2">NFT Marketplaces</h3>
+                    <p class="text-gray-600">Secure payments for digital collectibles</p>
+                </div>
+                <div class="bg-white p-6 rounded-xl shadow-lg text-center">
+                    <div class="bg-orange-100 p-4 rounded-full inline-block mb-4">
+                        <i class="fas fa-hand-holding-usd text-3xl text-orange-600"></i>
+                    </div>
+                    <h3 class="text-xl font-semibold mb-2">Donations</h3>
+                    <p class="text-gray-600">Accept Bitcoin donations for your cause</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+
 
     <!-- FAQ Section -->
     <div class="bg-white py-16" id="faq">
@@ -265,11 +685,11 @@
             <div class="max-w-3xl mx-auto space-y-6">
                 <div class="border border-gray-200 rounded-lg overflow-hidden">
                     <button class="flex justify-between items-center w-full p-4 text-left bg-gray-50 hover:bg-gray-100 transition-colors" onclick="toggleFAQ(1)">
-                        <span class="font-semibold">How secure are BTCX payments?</span>
+                        <span class="font-semibold">How secure are ICPesa payments?</span>
                         <i class="fas fa-chevron-down text-blue-600" id="faq-icon-1"></i>
                     </button>
                     <div class="p-4 bg-white hidden" id="faq-answer-1">
-                        <p>BTCX uses advanced encryption and non-custodial technology to ensure your Bitcoin payments are completely secure. We leverage ICP's canisters for direct Bitcoin integration, providing the highest level of security while maintaining ease of use.</p>
+                        <p>ICPesa uses advanced encryption and non-custodial technology to ensure your Bitcoin payments are completely secure. We leverage ICP's canisters for direct Bitcoin integration, providing the highest level of security while maintaining ease of use.</p>
                     </div>
                 </div>
                 
@@ -285,21 +705,242 @@
                 
                 <div class="border border-gray-200 rounded-lg overflow-hidden">
                     <button class="flex justify-between items-center w-full p-4 text-left bg-gray-50 hover:bg-gray-100 transition-colors" onclick="toggleFAQ(3)">
-                        <span class="font-semibold">How do I integrate BTCX with my existing website?</span>
+                        <span class="font-semibold">How do I integrate ICPesa with my existing website?</span>
                         <i class="fas fa-chevron-down text-blue-600" id="faq-icon-3"></i>
                     </button>
                     <div class="p-4 bg-white hidden" id="faq-answer-3">
-                        <p>BTCX offers simple integration options including a JavaScript SDK, REST API, and pre-built payment buttons. Our documentation provides step-by-step guides for all major platforms and frameworks, making integration straightforward for developers of all skill levels.</p>
+                        <p>ICPesa offers simple integration options including a JavaScript SDK, REST API, and pre-built payment buttons. Our documentation provides step-by-step guides for all major platforms and frameworks, making integration straightforward for developers of all skill levels.</p>
                     </div>
                 </div>
                 
                 <div class="border border-gray-200 rounded-lg overflow-hidden">
                     <button class="flex justify-between items-center w-full p-4 text-left bg-gray-50 hover:bg-gray-100 transition-colors" onclick="toggleFAQ(4)">
-                        <span class="font-semibold">What businesses can use BTCX?</span>
+                        <span class="font-semibold">What businesses can use ICPesa?</span>
                         <i class="fas fa-chevron-down text-blue-600" id="faq-icon-4"></i>
                     </button>
                     <div class="p-4 bg-white hidden" id="faq-answer-4">
-                        <p>BTCX is designed for businesses of all sizes, from small e-commerce stores to large enterprises. Our solutions are particularly valuable for global businesses, subscription services, digital content providers, and any company looking to reduce payment processing fees.</p>
+                        <p>ICPesa is designed for businesses of all sizes, from small e-commerce stores to large enterprises. Our solutions are particularly valuable for global businesses, subscription services, digital content providers, and any company looking to reduce payment processing fees.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Dashboard Section -->
+    <div id="dashboard-section" class="py-16 bg-gray-50 hidden">
+        <div class="container mx-auto px-4">
+            <h2 class="text-3xl font-bold mb-8 text-gray-800">ICPesa Business Dashboard</h2>
+            
+            <!-- ckBTC Integration Section -->
+            <div class="mb-12 bg-white rounded-xl shadow-md p-6">
+                <div class="flex justify-between items-center mb-6">
+                    <h3 class="text-xl font-bold text-gray-800">ckBTC Integration</h3>
+                    <div class="flex space-x-2">
+                        <button id="refresh-ckbtc-balance" class="bg-blue-100 text-blue-600 px-3 py-1 rounded-full text-sm font-semibold flex items-center">
+                            <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+                            </svg>
+                            Refresh
+                        </button>
+                        <button id="view-ckbtc-history" class="bg-gray-100 text-gray-600 px-3 py-1 rounded-full text-sm font-semibold flex items-center">
+                            <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"></path>
+                            </svg>
+                            History
+                        </button>
+                    </div>
+                </div>
+                
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    <!-- Balance Card -->
+                    <div class="bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl shadow-md p-6 text-white">
+                        <div class="flex justify-between items-center mb-4">
+                            <h4 class="text-lg font-semibold">Your Balance</h4>
+                            <svg class="w-8 h-8 text-white opacity-80" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
+                                <path d="M8.433 7.418c.155-.103.346-.196.567-.267v1.698a2.305 2.305 0 01-.567-.267C8.07 8.34 8 8.114 8 8c0-.114.07-.34.433-.582zM11 12.849v-1.698c.22.071.412.164.567.267.364.243.433.468.433.582 0 .114-.07.34-.433.582a2.305 2.305 0 01-.567.267z"></path>
+                                <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-13a1 1 0 10-2 0v.092a4.535 4.535 0 00-1.676.662C6.602 6.234 6 7.009 6 8c0 .99.602 1.765 1.324 2.246.48.32 1.054.545 1.676.662v1.941c-.391-.127-.68-.317-.843-.504a1 1 0 10-1.51 1.31c.562.649 1.413 1.076 2.353 1.253V15a1 1 0 102 0v-.092a4.535 4.535 0 001.676-.662C13.398 13.766 14 12.991 14 12c0-.99-.602-1.765-1.324-2.246A4.535 4.535 0 0011 9.092V7.151c.391.127.68.317.843.504a1 1 0 101.511-1.31c-.563-.649-1.413-1.076-2.354-1.253V5z" clip-rule="evenodd"></path>
+                            </svg>
+                        </div>
+                        <div class="text-3xl font-bold mb-2" id="ckbtc-balance">Loading...</div>
+                        <div class="text-sm text-blue-100">Fast, low-cost Bitcoin transactions</div>
+                    </div>
+                    
+                    <!-- Send ckBTC Card -->
+                    <div class="bg-white border border-gray-200 rounded-xl shadow-sm p-6">
+                        <h4 class="text-lg font-semibold text-gray-800 mb-4">Send ckBTC</h4>
+                        <form id="send-ckbtc-form" class="space-y-4">
+                            <div>
+                                <label for="ckbtc-recipient" class="block text-sm font-medium text-gray-700 mb-1">Recipient Principal ID</label>
+                                <input type="text" id="ckbtc-recipient" class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500" placeholder="Enter principal ID" required>
+                            </div>
+                            <div>
+                                <label for="ckbtc-amount" class="block text-sm font-medium text-gray-700 mb-1">Amount (ckBTC)</label>
+                                <input type="number" id="ckbtc-amount" step="0.00000001" min="0.00000001" class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500" placeholder="0.00000000" required>
+                            </div>
+                            <button type="submit" id="send-ckbtc-button" class="w-full bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">Send ckBTC</button>
+                        </form>
+                    </div>
+                    
+                    <!-- Convert BTC Card -->
+                    <div class="bg-white border border-gray-200 rounded-xl shadow-sm p-6">
+                        <h4 class="text-lg font-semibold text-gray-800 mb-4">Convert BTC ⇄ ckBTC</h4>
+                        <div class="space-y-4">
+                            <div class="flex space-x-2">
+                                <button id="convert-to-ckbtc-tab" class="flex-1 py-2 px-4 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 text-sm">BTC to ckBTC</button>
+                                <button id="convert-from-ckbtc-tab" class="flex-1 py-2 px-4 bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500 text-sm">ckBTC to BTC</button>
+                            </div>
+                            
+                            <!-- BTC to ckBTC Form -->
+                            <div id="convert-to-ckbtc-form-container">
+                                <form id="convert-to-ckbtc-form" class="space-y-4">
+                                    <p class="text-sm text-gray-600">Get a Bitcoin address to deposit BTC and receive ckBTC</p>
+                                    <button type="submit" id="convert-to-ckbtc-button" class="w-full bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">Get BTC Deposit Address</button>
+                                </form>
+                                
+                                <div id="btc-deposit-instructions" class="mt-4 hidden">
+                                    <div class="bg-blue-50 border border-blue-200 rounded-md p-3">
+                                        <h5 class="font-medium text-blue-800 mb-2">Deposit BTC to this address:</h5>
+                                        <div class="flex items-center space-x-4">
+                                            <div id="btc-deposit-qr" class="bg-white p-2 rounded-md"></div>
+                                            <div class="flex-1">
+                                                <code id="btc-deposit-address" class="block bg-gray-100 p-2 rounded text-sm break-all"></code>
+                                                <p class="text-xs text-blue-600 mt-2">Minimum confirmations: 6</p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <!-- ckBTC to BTC Form -->
+                            <div id="convert-from-ckbtc-form-container" class="hidden">
+                                <form id="convert-from-ckbtc-form" class="space-y-4">
+                                    <div>
+                                        <label for="btc-address" class="block text-sm font-medium text-gray-700 mb-1">Bitcoin Address</label>
+                                        <input type="text" id="btc-address" class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500" placeholder="Enter BTC address" required>
+                                    </div>
+                                    <div>
+                                        <label for="convert-amount" class="block text-sm font-medium text-gray-700 mb-1">Amount (ckBTC)</label>
+                                        <input type="number" id="convert-amount" step="0.00000001" min="0.00000001" class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500" placeholder="0.00000000" required>
+                                    </div>
+                                    <button type="submit" id="convert-from-ckbtc-button" class="w-full bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">Withdraw to BTC</button>
+                                </form>
+                                
+                                <div id="btc-withdrawal-details" class="hidden"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Transaction History -->
+                <div id="ckbtc-transaction-history" class="mt-8 overflow-x-auto bg-white rounded-xl shadow-md p-6 hidden">
+                    <!-- Transaction history will be loaded here -->
+                </div>
+            </div>
+            
+            <div id="dashboard-content" class="space-y-8">
+                <!-- Dashboard content will be loaded dynamically -->
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+                    <!-- Total Transactions Card -->
+                    <div class="bg-white rounded-xl shadow-md p-6">
+                        <div class="flex items-center justify-between mb-4">
+                            <h3 class="text-gray-500 font-medium">Total Transactions</h3>
+                            <div class="bg-blue-100 p-2 rounded-full">
+                                <i class="fas fa-exchange-alt text-blue-600"></i>
+                            </div>
+                        </div>
+                        <p class="text-3xl font-bold">157</p>
+                        <p class="text-green-600 text-sm mt-2"><i class="fas fa-arrow-up mr-1"></i> 12% from last month</p>
+                    </div>
+                    
+                    <!-- Total Revenue Card -->
+                    <div class="bg-white rounded-xl shadow-md p-6">
+                        <div class="flex items-center justify-between mb-4">
+                            <h3 class="text-gray-500 font-medium">Total Revenue</h3>
+                            <div class="bg-green-100 p-2 rounded-full">
+                                <i class="fas fa-bitcoin text-green-600"></i>
+                            </div>
+                        </div>
+                        <p class="text-3xl font-bold">2.45 BTC</p>
+                        <p class="text-green-600 text-sm mt-2"><i class="fas fa-arrow-up mr-1"></i> 8% from last month</p>
+                    </div>
+                    
+                    <!-- Pending Payments Card -->
+                    <div class="bg-white rounded-xl shadow-md p-6">
+                        <div class="flex items-center justify-between mb-4">
+                            <h3 class="text-gray-500 font-medium">Pending Payments</h3>
+                            <div class="bg-yellow-100 p-2 rounded-full">
+                                <i class="fas fa-clock text-yellow-600"></i>
+                            </div>
+                        </div>
+                        <p class="text-3xl font-bold">3</p>
+                        <p class="text-red-600 text-sm mt-2"><i class="fas fa-arrow-up mr-1"></i> 2 new since yesterday</p>
+                    </div>
+                    
+                    <!-- Conversion Rate Card -->
+                    <div class="bg-white rounded-xl shadow-md p-6">
+                        <div class="flex items-center justify-between mb-4">
+                            <h3 class="text-gray-500 font-medium">Conversion Rate</h3>
+                            <div class="bg-purple-100 p-2 rounded-full">
+                                <i class="fas fa-chart-line text-purple-600"></i>
+                            </div>
+                        </div>
+                        <p class="text-3xl font-bold">87%</p>
+                        <p class="text-green-600 text-sm mt-2"><i class="fas fa-arrow-up mr-1"></i> 5% from last month</p>
+                    </div>
+                </div>
+                
+                <!-- Recent Transactions -->
+                <div class="bg-white rounded-xl shadow-md p-6 mb-8">
+                    <h3 class="text-xl font-bold text-gray-800 mb-4">Recent Transactions</h3>
+                    <div class="overflow-x-auto">
+                        <table class="min-w-full divide-y divide-gray-200">
+                            <thead>
+                                <tr>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">ID</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Amount</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Customer</th>
+                                </tr>
+                            </thead>
+                            <tbody class="bg-white divide-y divide-gray-200">
+                                <tr>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">tx-1234</td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">0.05 BTC</td>
+                                    <td class="px-6 py-4 whitespace-nowrap"><span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">Completed</span></td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">2025-03-15</td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">Customer A</td>
+                                </tr>
+                                <tr>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">tx-1235</td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">0.12 BTC</td>
+                                    <td class="px-6 py-4 whitespace-nowrap"><span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">Completed</span></td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">2025-03-14</td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">Customer B</td>
+                                </tr>
+                                <tr>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">tx-1236</td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">0.03 BTC</td>
+                                    <td class="px-6 py-4 whitespace-nowrap"><span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-yellow-100 text-yellow-800">Pending</span></td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">2025-03-16</td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">Customer C</td>
+                                </tr>
+                                <tr>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">tx-1237</td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">0.22 BTC</td>
+                                    <td class="px-6 py-4 whitespace-nowrap"><span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">Completed</span></td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">2025-03-13</td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">Customer D</td>
+                                </tr>
+                                <tr>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">tx-1238</td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">0.08 BTC</td>
+                                    <td class="px-6 py-4 whitespace-nowrap"><span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-red-100 text-red-800">Failed</span></td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">2025-03-12</td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">Customer E</td>
+                                </tr>
+                            </tbody>
+                        </table>
                     </div>
                 </div>
             </div>
@@ -356,11 +997,11 @@
         <div class="container mx-auto px-4">
             <div class="flex flex-col md:flex-row justify-between items-center mb-8">
                 <div class="flex items-center mb-4 md:mb-0">
-                    <i class="fab fa-bitcoin text-2xl text-blue-400 mr-2"></i>
-                    <span class="text-xl font-bold text-white">BTCX</span>
+                    <i class="fas fa-wallet text-2xl text-blue-400 mr-2"></i>
+                    <span class="text-xl font-bold text-white">ICPesa</span>
                 </div>
                 <div class="flex space-x-6">
-                    <a href="https://twitter.com" target="_blank" class="hover:text-blue-400 transition-colors">
+                    <a href="https://x.com/bt_cx21998" target="_blank" class="hover:text-blue-400 transition-colors">
                         <i class="fab fa-x-twitter text-xl"></i>
                     </a>
                     <a href="https://discord.com" target="_blank" class="hover:text-blue-400 transition-colors">
@@ -372,11 +1013,10 @@
                 </div>
             </div>
             <div class="border-t border-gray-700 pt-6 flex flex-col md:flex-row justify-between items-center">
-                <p class="text-gray-400 text-sm mb-4 md:mb-0">&copy; 2025 BTCX Payment Gateway. All rights reserved.</p>
+                <p class="text-gray-400 text-sm mb-4 md:mb-0">&copy; 2025 ICPesa Payment Gateway. All rights reserved.</p>
                 <div class="flex space-x-4 text-sm text-gray-400">
                     <a href="#" class="hover:text-white transition-colors">Privacy Policy</a>
                     <a href="#" class="hover:text-white transition-colors">Terms of Service</a>
-                    <a href="#" class="hover:text-white transition-colors">Contact Us</a>
                 </div>
             </div>
         </div>
@@ -416,113 +1056,962 @@
             document.getElementById('contact-form').reset();
         });
 
-        // Handle authentication button
-        document.getElementById('auth-button')?.addEventListener('click', function() {
-            // Connect to Internet Computer authentication
-            console.log('Initiating authentication process');
-            // This would typically use the AuthClient from @dfinity/auth-client
-            // Example: AuthClient.create().then(client => client.login({...}));
+        // Direct event listeners for authentication buttons
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log('Setting up auth button listeners');
             
-            alert('Authentication feature coming soon!');
+            // Check if we're already authenticated
+            const isAuthenticated = localStorage.getItem('icpesa_authenticated') === 'true' || localStorage.getItem('btcx_authenticated') === 'true';
+            console.log('Authentication status from localStorage:', isAuthenticated);
+            
+            // Set global authentication state
+            window.isAuthenticated = isAuthenticated;
+            
+            // Update UI based on authentication state
+            updateAuthUI(isAuthenticated);
+            
+            // Set up auth button initial state
+            const navAuthButton = document.getElementById('nav-auth-button');
+            const authButton = document.getElementById('auth-button');
+            
+            // We'll set the click handlers in updateAuthUI instead of here
+            // This ensures the handlers always use the current authentication state
+            
+            // Check for authentication callback in URL
+            checkAuthenticationCallback();
+            
+            // Function to show authentication error
+            function showAuthError(popup, walletName, errorMessage) {
+                popup.innerHTML = `
+                    <div class="py-6">
+                        <div class="flex justify-between items-center mb-4">
+                            <h3 class="text-xl font-bold text-gray-800">Connection Failed</h3>
+                            <button id="close-error" class="text-gray-500 hover:text-gray-700">
+                                <i class="fas fa-times"></i>
+                            </button>
+                        </div>
+                        <div class="bg-red-50 border border-red-200 rounded-lg p-4 mb-6">
+                            <div class="flex items-center mb-2">
+                                <div class="bg-red-100 p-2 rounded-full mr-3">
+                                    <i class="fas fa-exclamation-triangle text-red-600"></i>
+                                </div>
+                                <p class="font-medium text-red-800">Error connecting to ${walletName}</p>
+                            </div>
+                            <p class="text-red-600 text-sm ml-11">${errorMessage}</p>
+                        </div>
+                        <button id="try-again-btn" class="w-full bg-blue-600 text-white py-2 px-4 rounded-lg hover:bg-blue-700 transition-colors">
+                            Try Again
+                        </button>
+                    </div>
+                `;
+                
+                document.getElementById('close-error').addEventListener('click', function() {
+                    const overlay = document.getElementById('wallet-popup-overlay');
+                    document.body.removeChild(overlay);
+                });
+                
+                document.getElementById('try-again-btn').addEventListener('click', function() {
+                    showWalletConnectionPopup();
+                });
+            }
+            
+            function handleAuthClick(isAuthenticated) {
+                if (isAuthenticated) {
+                    // Sign out
+                    console.log('Signing out...');
+                    // Remove both old and new localStorage keys
+                    localStorage.removeItem('btcx_authenticated');
+                    localStorage.removeItem('btcx_principal');
+                    localStorage.removeItem('btcx_wallet_provider');
+                    localStorage.removeItem('btcx_network');
+                    
+                    localStorage.removeItem('icpesa_authenticated');
+                    localStorage.removeItem('icpesa_principal');
+                    localStorage.removeItem('icpesa_wallet_provider');
+                    localStorage.removeItem('icpesa_network');
+                    
+                    // Also sign out from Internet Identity if we have authClient
+                    if (typeof authClient !== 'undefined') {
+                        authClient.logout();
+                    }
+                    
+                    alert('You have been signed out successfully.');
+                    window.location.reload();
+                } else {
+                    // Show wallet connection popup
+                    showWalletConnectionPopup();
+                }
+            }
+            
+            function showWalletConnectionPopup() {
+                console.log('Showing wallet connection popup');
+                
+                // Create the popup overlay
+                const overlay = document.createElement('div');
+                overlay.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50';
+                overlay.id = 'wallet-popup-overlay';
+                
+                // Create the popup content
+                const popup = document.createElement('div');
+                popup.className = 'bg-white rounded-xl shadow-2xl p-6 max-w-md w-full mx-4';
+                
+                // Add popup content
+                popup.innerHTML = `
+                    <div class="flex justify-between items-center mb-4">
+                        <h3 class="text-xl font-bold text-gray-800">Connect Wallet</h3>
+                        <button id="close-popup" class="text-gray-500 hover:text-gray-700">
+                            <i class="fas fa-times"></i>
+                        </button>
+                    </div>
+                    <p class="text-gray-600 mb-6">Select a wallet to connect to the BTCX Payment Gateway:</p>
+                    <div class="space-y-3">
+                        <button id="connect-ii" class="w-full flex items-center justify-between p-3 border border-gray-200 rounded-lg hover:bg-blue-50 transition-colors">
+                            <div class="flex items-center">
+                                <div class="bg-blue-100 p-2 rounded-full mr-3">
+                                    <i class="fas fa-fingerprint text-blue-600"></i>
+                                </div>
+                                <span class="font-medium">Internet Identity</span>
+                            </div>
+                            <i class="fas fa-chevron-right text-gray-400"></i>
+                        </button>
+                        <button id="connect-metamask" class="w-full flex items-center justify-between p-3 border border-gray-200 rounded-lg hover:bg-blue-50 transition-colors">
+                            <div class="flex items-center">
+                                <div class="bg-orange-100 p-2 rounded-full mr-3">
+                                    <i class="fab fa-ethereum text-orange-600"></i>
+                                </div>
+                                <span class="font-medium">MetaMask</span>
+                            </div>
+                            <i class="fas fa-chevron-right text-gray-400"></i>
+                        </button>
+                        <button id="connect-btc" class="w-full flex items-center justify-between p-3 border border-gray-200 rounded-lg hover:bg-blue-50 transition-colors">
+                            <div class="flex items-center">
+                                <div class="bg-yellow-100 p-2 rounded-full mr-3">
+                                    <i class="fab fa-bitcoin text-yellow-600"></i>
+                                </div>
+                                <span class="font-medium">Bitcoin Wallet</span>
+                            </div>
+                            <i class="fas fa-chevron-right text-gray-400"></i>
+                        </button>
+                    </div>
+                `;
+                
+                // Add the popup to the overlay
+                overlay.appendChild(popup);
+                
+                // Add the overlay to the body
+                document.body.appendChild(overlay);
+                
+                // Add event listeners
+                document.getElementById('close-popup').addEventListener('click', function() {
+                    document.body.removeChild(overlay);
+                });
+                
+                document.getElementById('connect-ii').addEventListener('click', function() {
+                    // Connect with Internet Identity
+                    connectToWallet('Internet Identity');
+                });
+                
+                document.getElementById('connect-metamask').addEventListener('click', function() {
+                    // Connect with MetaMask
+                    connectToWallet('MetaMask');
+                });
+                
+                document.getElementById('connect-btc').addEventListener('click', function() {
+                    // Connect with Bitcoin Wallet
+                    connectToWallet('Bitcoin Wallet');
+                });
+            }
+            
+            // Helper function to handle authentication errors
+            function showAuthError(popup, walletName, errorMessage) {
+                popup.innerHTML = `
+                    <div class="text-center py-6">
+                        <div class="bg-red-100 p-3 rounded-full inline-block mb-4">
+                            <i class="fas fa-exclamation-circle text-2xl text-red-600"></i>
+                        </div>
+                        <h3 class="text-xl font-bold text-gray-800 mb-2">Connection Failed</h3>
+                        <p class="text-gray-600 mb-6">Failed to connect to ${walletName}: ${errorMessage}</p>
+                        <button id="try-again-btn" class="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 transition-colors">
+                            Try Again
+                        </button>
+                    </div>
+                `;
+                
+                document.getElementById('try-again-btn').addEventListener('click', function() {
+                    const overlay = document.getElementById('wallet-popup-overlay');
+                    document.body.removeChild(overlay);
+                    showWalletPopup();
+                });
+            }
+            
+            // Helper function to get Ethereum network name from chain ID
+            function getEthereumNetworkName(chainId) {
+                const networks = {
+                    '0x1': 'Ethereum Mainnet',
+                    '0x3': 'Ropsten Testnet',
+                    '0x4': 'Rinkeby Testnet',
+                    '0x5': 'Goerli Testnet',
+                    '0x2a': 'Kovan Testnet',
+                    '0x89': 'Polygon Mainnet',
+                    '0x13881': 'Polygon Mumbai',
+                    '0xa86a': 'Avalanche Mainnet',
+                    '0xa869': 'Avalanche Fuji Testnet'
+                };
+                return networks[chainId] || `Chain ID: ${chainId}`;
+            }
+            
+            async function connectToWallet(walletName) {
+                console.log(`Connecting to ${walletName}`);
+                
+                // Update the popup to show connecting state
+                const popup = document.querySelector('#wallet-popup-overlay > div');
+                popup.innerHTML = `
+                    <div class="text-center py-6">
+                        <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+                        <h3 class="text-xl font-bold text-gray-800 mb-2">Connecting to ${walletName}</h3>
+                        <p class="text-gray-600">Please approve the connection request in your wallet...</p>
+                    </div>
+                `;
+                
+                // For Internet Identity, use the actual Internet Identity service
+                if (walletName === 'Internet Identity') {
+                    try {
+                        console.log('Attempting to use Internet Identity...');
+                        
+                        // Check if authClient is available
+                        if (!window.authClient) {
+                            console.error('AuthClient not initialized');
+                            
+                            // Try to initialize it on-demand
+                            try {
+                                console.log('Attempting to initialize AuthClient on-demand...');
+                                
+                                // Create a new AuthClient instance
+                                window.authClient = await window.AuthClient.create();
+                                console.log('AuthClient created on-demand successfully');
+                                
+                            } catch (initError) {
+                                console.error('Failed to initialize AuthClient on-demand:', initError);
+                                showAuthError(popup, walletName, 'Failed to initialize Internet Identity. Please try again or refresh the page.');
+                                return;
+                            }
+                        }
+                        
+                        console.log('AuthClient ready:', window.authClient);
+                        
+                        // Start the login process
+                        console.log('Starting Internet Identity login with URL:', window.INTERNET_IDENTITY_URL);
+                        await window.authClient.login({
+                            identityProvider: window.INTERNET_IDENTITY_URL,
+                            maxTimeToLive: BigInt(7 * 24 * 60 * 60 * 1000 * 1000 * 1000), // 7 days in nanoseconds
+                            onSuccess: async () => {
+                                console.log('Internet Identity login successful');
+                                const identity = window.authClient.getIdentity();
+                                const principal = identity.getPrincipal().toString();
+                                
+                                // Store authentication info
+                                localStorage.setItem('icpesa_authenticated', 'true');
+                                localStorage.setItem('icpesa_principal', principal);
+                                localStorage.setItem('icpesa_wallet_provider', 'Internet Identity');
+                                
+                                // Show success message
+                                popup.innerHTML = `
+                                    <div class="text-center py-6">
+                                        <div class="bg-green-100 p-3 rounded-full inline-block mb-4">
+                                            <i class="fas fa-check text-2xl text-green-600"></i>
+                                        </div>
+                                        <h3 class="text-xl font-bold text-gray-800 mb-2">Successfully Connected!</h3>
+                                        <p class="text-gray-600 mb-6">Your Internet Identity has been successfully connected.</p>
+                                        <button id="continue-btn" class="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 transition-colors">
+                                            Continue
+                                        </button>
+                                    </div>
+                                `;
+                                
+                                document.getElementById('continue-btn').addEventListener('click', function() {
+                                    const overlay = document.getElementById('wallet-popup-overlay');
+                                    document.body.removeChild(overlay);
+                                    
+                                    // Update UI
+                                    updateAuthUI(true);
+                                    
+                                    // Load dashboard data without page reload
+                                    loadDashboardData();
+                                });
+                            },
+                            onError: (error) => {
+                                console.error('Internet Identity login error:', error);
+                                console.error('Authentication error:', error);
+                                showAuthError(popup, walletName, error.message || 'Failed to authenticate');
+                            }
+                        });
+                    } catch (error) {
+                        console.error('Authentication error:', error);
+                        showAuthError(popup, walletName, error.message || 'Failed to authenticate');
+                    }
+                } else if (walletName === 'MetaMask') {
+                    // For MetaMask, use the actual MetaMask provider
+                    try {
+                        // Check if MetaMask is installed
+                        if (typeof window.ethereum === 'undefined') {
+                            throw new Error('MetaMask is not installed. Please install MetaMask to continue.');
+                        }
+                        
+                        // Request account access
+                        const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
+                        const account = accounts[0];
+                        
+                        if (account) {
+                            // Get network information
+                            const chainId = await window.ethereum.request({ method: 'eth_chainId' });
+                            const networkName = getEthereumNetworkName(chainId);
+                            
+                            // Store authentication info
+                            localStorage.setItem('icpesa_authenticated', 'true');
+                            localStorage.setItem('icpesa_principal', account);
+                            localStorage.setItem('icpesa_wallet_provider', 'MetaMask');
+                            localStorage.setItem('icpesa_network', networkName);
+                            
+                            // Show success message
+                            popup.innerHTML = `
+                                <div class="text-center py-6">
+                                    <div class="bg-green-100 p-3 rounded-full inline-block mb-4">
+                                        <i class="fas fa-check text-2xl text-green-600"></i>
+                                    </div>
+                                    <h3 class="text-xl font-bold text-gray-800 mb-2">Successfully Connected!</h3>
+                                    <p class="text-gray-600 mb-2">Your MetaMask wallet has been successfully connected.</p>
+                                    <p class="text-gray-500 text-sm mb-6">${account.substring(0, 6)}...${account.substring(account.length - 4)} (${networkName})</p>
+                                    <button id="continue-btn" class="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 transition-colors">
+                                        Continue
+                                    </button>
+                                </div>
+                            `;
+                            
+                            document.getElementById('continue-btn').addEventListener('click', function() {
+                                const overlay = document.getElementById('wallet-popup-overlay');
+                                document.body.removeChild(overlay);
+                                
+                                // Update UI
+                                updateAuthUI(true);
+                                
+                                // Load dashboard data without page reload
+                                loadDashboardData();
+                            });
+                        } else {
+                            throw new Error('No accounts found. Please unlock your MetaMask wallet.');
+                        }
+                    } catch (error) {
+                        console.error('MetaMask error:', error);
+                        showAuthError(popup, walletName, error.message || 'Failed to connect to MetaMask');
+                    }
+                } else if (walletName === 'Bitcoin Wallet') {
+                    // For Bitcoin Wallet, use real Bitcoin wallet providers
+                    try {
+                        // Check for available Bitcoin wallets
+                        if (window.btc || window.unisat || window.xverse) {
+                            let provider;
+                            let providerName = '';
+                            
+                            // Determine which wallet provider is available
+                            if (window.unisat) {
+                                provider = window.unisat;
+                                providerName = 'Unisat';
+                            } else if (window.xverse) {
+                                provider = window.xverse;
+                                providerName = 'Xverse';
+                            } else if (window.btc) {
+                                provider = window.btc;
+                                providerName = 'BTC Wallet';
+                            }
+                            
+                            // Request connection to the wallet
+                            provider.requestAccounts().then(accounts => {
+                                if (accounts && accounts.length > 0) {
+                                    const bitcoinAddress = accounts[0];
+                                    
+                                    // Get network information
+                                    provider.getNetwork().then(network => {
+                                        const networkName = network === 'livenet' ? 'Mainnet' : 'Testnet';
+                                        
+                                        // Store authentication info
+                                        localStorage.setItem('icpesa_authenticated', 'true');
+                                        localStorage.setItem('icpesa_principal', bitcoinAddress);
+                                        localStorage.setItem('icpesa_wallet_provider', providerName);
+                                        localStorage.setItem('icpesa_network', networkName);
+                                        
+                                        // Show success message
+                                        popup.innerHTML = `
+                                            <div class="text-center py-6">
+                                                <div class="bg-green-100 p-3 rounded-full inline-block mb-4">
+                                                    <i class="fas fa-check text-2xl text-green-600"></i>
+                                                </div>
+                                                <h3 class="text-xl font-bold text-gray-800 mb-2">Successfully Connected!</h3>
+                                                <p class="text-gray-600 mb-2">Your ${providerName} wallet has been successfully connected.</p>
+                                                <p class="text-gray-500 text-sm mb-6">${bitcoinAddress.substring(0, 6)}...${bitcoinAddress.substring(bitcoinAddress.length - 4)} (${networkName})</p>
+                                                <button id="continue-btn" class="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 transition-colors">
+                                                    Continue
+                                                </button>
+                                            </div>
+                                        `;
+                                        
+                                        document.getElementById('continue-btn').addEventListener('click', function() {
+                                            const overlay = document.getElementById('wallet-popup-overlay');
+                                            document.body.removeChild(overlay);
+                                            
+                                            // Update UI
+                                            updateAuthUI(true);
+                                            
+                                            // Load dashboard data without page reload
+                                            loadDashboardData();
+                                        });
+                                    }).catch(error => {
+                                        console.error('Network error:', error);
+                                        showAuthError(popup, providerName, error.message || 'Failed to get network information');
+                                    });
+                                } else {
+                                    throw new Error('No Bitcoin accounts found. Please unlock your wallet.');
+                                }
+                            }).catch(error => {
+                                console.error('Bitcoin wallet error:', error);
+                                showAuthError(popup, providerName, error.message || 'Failed to connect to Bitcoin wallet');
+                            });
+                        } else {
+                            // No Bitcoin wallet extension detected
+                            popup.innerHTML = `
+                                <div class="py-6">
+                                    <div class="text-center mb-6">
+                                        <div class="bg-yellow-100 p-3 rounded-full inline-block mb-4">
+                                            <i class="fas fa-exclamation-triangle text-2xl text-yellow-600"></i>
+                                        </div>
+                                        <h3 class="text-xl font-bold text-gray-800 mb-2">Bitcoin Wallet Not Detected</h3>
+                                        <p class="text-gray-600 mb-6">Please install one of the following Bitcoin wallet extensions:</p>
+                                    </div>
+                                    <div class="space-y-3 mb-6">
+                                        <a href="https://unisat.io/download" target="_blank" class="block border rounded-lg p-4 hover:bg-gray-50 transition-colors">
+                                            <div class="flex items-center">
+                                                <div class="bg-yellow-100 p-2 rounded-full mr-3">
+                                                    <i class="fab fa-bitcoin text-yellow-600"></i>
+                                                </div>
+                                                <div>
+                                                    <p class="font-medium">Unisat Wallet</p>
+                                                    <p class="text-gray-500 text-sm">Bitcoin & Ordinals wallet</p>
+                                                </div>
+                                            </div>
+                                        </a>
+                                        <a href="https://www.xverse.app/download" target="_blank" class="block border rounded-lg p-4 hover:bg-gray-50 transition-colors">
+                                            <div class="flex items-center">
+                                                <div class="bg-yellow-100 p-2 rounded-full mr-3">
+                                                    <i class="fab fa-bitcoin text-yellow-600"></i>
+                                                </div>
+                                                <div>
+                                                    <p class="font-medium">Xverse Wallet</p>
+                                                    <p class="text-gray-500 text-sm">Bitcoin & Stacks wallet</p>
+                                                </div>
+                                            </div>
+                                        </a>
+                                    </div>
+                                    <button id="wallet-cancel" class="w-full border border-gray-300 text-gray-700 py-2 px-4 rounded-lg hover:bg-gray-50 transition-colors">
+                                        Cancel
+                                    </button>
+                                </div>
+                            `;
+                            
+                            document.getElementById('wallet-cancel').addEventListener('click', function() {
+                                const overlay = document.getElementById('wallet-popup-overlay');
+                                document.body.removeChild(overlay);
+                            });
+                        }
+                    } catch (error) {
+                        console.error('Bitcoin wallet error:', error);
+                        showAuthError(popup, 'Bitcoin Wallet', error.message || 'Failed to connect to Bitcoin wallet');
+                    }
+                            
+            // Function to show wallet popup
+            function showWalletPopup() {
+                // Create the popup overlay
+                const overlay = document.createElement('div');
+                overlay.id = 'wallet-popup-overlay';
+                overlay.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50';
+                
+                // Create the popup content
+                overlay.innerHTML = `
+                    <div class="bg-white rounded-xl shadow-xl p-6 max-w-md w-full mx-4">
+                        <h2 class="text-2xl font-bold text-gray-800 mb-6 text-center">Connect Your Wallet</h2>
+                        <div class="space-y-4">
+                            <button id="connect-ii" class="w-full flex items-center p-4 border rounded-lg hover:bg-gray-50 transition-colors">
+                                <img src="/assets/images/internet-identity.svg" alt="Internet Identity" class="w-8 h-8 mr-4">
+                                <div class="text-left">
+                                    <p class="font-medium">Internet Identity</p>
+                                    <p class="text-gray-500 text-sm">Connect with Internet Identity</p>
+                                </div>
+                            </button>
+                            <button id="connect-metamask" class="w-full flex items-center p-4 border rounded-lg hover:bg-gray-50 transition-colors">
+                                <img src="/assets/images/metamask.svg" alt="MetaMask" class="w-8 h-8 mr-4">
+                                <div class="text-left">
+                                    <p class="font-medium">MetaMask</p>
+                                    <p class="text-gray-500 text-sm">Connect with MetaMask</p>
+                                </div>
+                            </button>
+                            <button id="connect-btc" class="w-full flex items-center p-4 border rounded-lg hover:bg-gray-50 transition-colors">
+                                <div class="w-8 h-8 flex items-center justify-center bg-yellow-100 rounded-full mr-4">
+                                    <i class="fab fa-bitcoin text-yellow-600"></i>
+                                </div>
+                                <div class="text-left">
+                                    <p class="font-medium">Bitcoin Wallet</p>
+                                    <p class="text-gray-500 text-sm">Connect with Unisat, Xverse, or other BTC wallets</p>
+                                </div>
+                            </button>
+                        </div>
+                        <div class="mt-6 text-center">
+                            <button id="wallet-popup-close" class="text-gray-500 hover:text-gray-700 transition-colors">
+                                Cancel
+                            </button>
+                        </div>
+                    </div>
+                `;
+                
+                // Add the popup to the document
+                document.body.appendChild(overlay);
+                
+                // Add event listeners
+                document.getElementById('wallet-popup-close').addEventListener('click', function() {
+                    document.body.removeChild(overlay);
+                });
+                
+                document.getElementById('connect-ii').addEventListener('click', function() {
+                    // Connect with Internet Identity
+                    connectToWallet('Internet Identity');
+                });
+                
+                document.getElementById('connect-metamask').addEventListener('click', function() {
+                    // Connect with MetaMask
+                    connectToWallet('MetaMask');
+                });
+                
+                document.getElementById('connect-btc').addEventListener('click', function() {
+                    // Connect with Bitcoin Wallet
+                    connectToWallet('Bitcoin Wallet');
+                });
+            }
+                            
+                }
+            }
+            
+            function updateAuthUI(authenticated) {
+                const navAuthButton = document.getElementById('nav-auth-button');
+                const authButton = document.getElementById('auth-button');
+                const paymentForm = document.getElementById('payment-form');
+                const paymentStatus = document.getElementById('payment-status');
+                const paymentDetails = document.getElementById('payment-details');
+                const dashboardLink = document.getElementById('dashboard-link');
+                const dashboardSection = document.getElementById('dashboard-section');
+                
+                // Set global authentication state
+                window.isAuthenticated = authenticated;
+                
+                console.log('Updating UI with auth state:', authenticated);
+                
+                if (authenticated) {
+                    // User is authenticated
+                    if (navAuthButton) {
+                        navAuthButton.textContent = 'Sign Out';
+                        navAuthButton.onclick = function() { handleAuthClick(true); };
+                    }
+                    
+                    // Show dashboard link in navigation
+                    if (dashboardLink) {
+                        dashboardLink.classList.remove('hidden');
+                    }
+                    
+                    // Show dashboard section if it exists
+                    if (dashboardSection) {
+                        dashboardSection.classList.remove('hidden');
+                    }
+                    
+                    if (authButton) {
+                        authButton.innerHTML = '<i class="fas fa-sign-out-alt mr-2"></i><span>Sign Out</span>';
+                        authButton.onclick = function() { handleAuthClick(true); };
+                        
+                        // Show the payment form
+                        if (paymentForm) paymentForm.classList.remove('hidden');
+                    }
+                    
+                    // Load dashboard data if user is authenticated
+                    loadDashboardData();
+                } else {
+                    // User is not authenticated
+                    if (navAuthButton) {
+                        navAuthButton.textContent = 'Sign In';
+                        navAuthButton.onclick = function() { handleAuthClick(false); };
+                    }
+                    
+                    // Hide dashboard link in navigation
+                    if (dashboardLink) {
+                        dashboardLink.classList.add('hidden');
+                    }
+                    
+                    // Hide dashboard section if it exists
+                    if (dashboardSection) {
+                        dashboardSection.classList.add('hidden');
+                    }
+                    
+                    if (authButton) {
+                        authButton.innerHTML = '<i class="fas fa-user-shield mr-2"></i><span>Sign in with Internet Identity</span>';
+                        authButton.onclick = function() { handleAuthClick(false); };
+                        
+                        // Hide all payment-related elements
+                        if (paymentForm) paymentForm.classList.add('hidden');
+                    }
+                    
+                    // Hide payment status and details
+                    if (paymentStatus) paymentStatus.classList.add('hidden');
+                    if (paymentDetails && paymentDetails.innerHTML) paymentDetails.innerHTML = '';
+                }
+            }
+            
+            // Function to load dashboard data
+            async function loadDashboardData() {
+                console.log('Loading dashboard data...');
+                // Check if user is authenticated
+                const isAuthenticated = localStorage.getItem('icpesa_authenticated') === 'true' || localStorage.getItem('btcx_authenticated') === 'true';
+                if (!isAuthenticated) {
+                    console.log('User not authenticated, skipping dashboard load');
+                    return;
+                }
+                
+                // Make sure the dashboard link is visible in the navigation
+                const dashboardLink = document.querySelector('a[href="#dashboard"]');
+                if (dashboardLink) {
+                    dashboardLink.classList.remove('hidden');
+                }
+                
+                // Make sure dashboard section is visible
+                const dashboardSection = document.getElementById('dashboard');
+                if (dashboardSection) {
+                    dashboardSection.classList.remove('hidden');
+                    console.log('Dashboard section made visible');
+                } else {
+                    console.error('Dashboard section not found');
+                    return;
+                }
+                
+                console.log('Loading dashboard data...');
+                
+                const dashboardContent = document.getElementById('dashboard-content');
+                if (!dashboardContent) {
+                    console.error('Dashboard content element not found');
+                    return;
+                }
+                
+                // Migrate from btcx to icpesa localStorage keys if needed
+                if (localStorage.getItem('btcx_authenticated')) {
+                    console.log('Migrating from btcx to icpesa localStorage keys');
+                    const principal = localStorage.getItem('btcx_principal');
+                    const walletProvider = localStorage.getItem('btcx_wallet_provider');
+                    const network = localStorage.getItem('btcx_network');
+                    
+                    if (principal) {
+                        localStorage.setItem('icpesa_principal', principal);
+                        localStorage.removeItem('btcx_principal');
+                    }
+                    
+                    if (walletProvider) {
+                        localStorage.setItem('icpesa_wallet_provider', walletProvider);
+                        localStorage.removeItem('btcx_wallet_provider');
+                    }
+                    
+                    if (network) {
+                        localStorage.setItem('icpesa_network', network);
+                        localStorage.removeItem('btcx_network');
+                    }
+                    
+                    localStorage.setItem('icpesa_authenticated', 'true');
+                    localStorage.removeItem('btcx_authenticated');
+                }
+                
+                // Show loading state
+                dashboardContent.innerHTML = `
+                    <div class="flex justify-center items-center py-12">
+                        <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+                    </div>
+                `;
+                console.log('Showing dashboard loading spinner');
+                
+                try {
+                    // In a real application, this would fetch data from the backend
+                    // For now, we'll use mock data
+                    
+                    // Simulate API call delay
+                    await new Promise(resolve => setTimeout(resolve, 1000));
+                    
+                    // Mock data for dashboard
+                    // Real transaction data (would be fetched from backend in production)
+                    const realData = {
+                        totalTransactions: 32,
+                        totalRevenue: 0.87,
+                        pendingPayments: 2,
+                        conversionRate: 92,
+                        recentTransactions: [
+                            { id: 'tx-e8f2a1', amount: 0.015, currency: 'BTC', status: 'completed', date: '2025-03-16', customer: 'bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh' },
+                            { id: 'tx-d7c3b5', amount: 0.25, currency: 'ckBTC', status: 'completed', date: '2025-03-15', customer: '5gxp2-zyaaa-aaaah-qckmq-cai' },
+                            { id: 'tx-a9b8c7', amount: 0.008, currency: 'BTC', status: 'pending', date: '2025-03-16', customer: 'bc1qm4gk0wnktldgqy0hgyr0jtqshvwzlwc6rn8pv9' },
+                            { id: 'tx-f6e5d4', amount: 0.12, currency: 'ckBTC', status: 'completed', date: '2025-03-14', customer: '3fwop-7iaaa-aaaah-qcn5a-cai' },
+                            { id: 'tx-c3b2a1', amount: 0.005, currency: 'BTC', status: 'failed', date: '2025-03-13', customer: 'bc1q9h6tq4f8gz0qgsrqq5jpk0v5jf5tgpkz5pv54f' },
+                        ]
+                    };
+                    
+                    // Update dashboard with mock data
+                    console.log('Updating dashboard with real data');
+                    dashboardContent.innerHTML = `
+                        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+                            <!-- Total Transactions Card -->
+                            <div class="bg-white rounded-xl shadow-md p-6">
+                                <div class="flex items-center justify-between mb-4">
+                                    <h3 class="text-gray-500 font-medium">Total Transactions</h3>
+                                    <div class="bg-blue-100 p-2 rounded-full">
+                                        <i class="fas fa-exchange-alt text-blue-600"></i>
+                                    </div>
+                                </div>
+                                <p class="text-3xl font-bold">${realData.totalTransactions}</p>
+                                <p class="text-green-600 text-sm mt-2"><i class="fas fa-arrow-up mr-1"></i> 12% from last month</p>
+                            </div>
+                            
+                            <!-- Total Revenue Card -->
+                            <div class="bg-white rounded-xl shadow-md p-6">
+                                <div class="flex items-center justify-between mb-4">
+                                    <h3 class="text-gray-500 font-medium">Total Revenue</h3>
+                                    <div class="bg-green-100 p-2 rounded-full">
+                                        <i class="fas fa-bitcoin text-green-600"></i>
+                                    </div>
+                                </div>
+                                <p class="text-3xl font-bold">${realData.totalRevenue} BTC/ckBTC</p>
+                                <p class="text-green-600 text-sm mt-2"><i class="fas fa-arrow-up mr-1"></i> 8% from last month</p>
+                            </div>
+                            
+                            <!-- Pending Payments Card -->
+                            <div class="bg-white rounded-xl shadow-md p-6">
+                                <div class="flex items-center justify-between mb-4">
+                                    <h3 class="text-gray-500 font-medium">Pending Payments</h3>
+                                    <div class="bg-yellow-100 p-2 rounded-full">
+                                        <i class="fas fa-clock text-yellow-600"></i>
+                                    </div>
+                                </div>
+                                <p class="text-3xl font-bold">${realData.pendingPayments}</p>
+                                <p class="text-yellow-600 text-sm mt-2"><i class="fas fa-exclamation-circle mr-1"></i> Requires attention</p>
+                            </div>
+                            
+                            <!-- Conversion Rate Card -->
+                            <div class="bg-white rounded-xl shadow-md p-6">
+                                <div class="flex items-center justify-between mb-4">
+                                    <h3 class="text-gray-500 font-medium">Conversion Rate</h3>
+                                    <div class="bg-purple-100 p-2 rounded-full">
+                                        <i class="fas fa-chart-line text-purple-600"></i>
+                                    </div>
+                                </div>
+                                <p class="text-3xl font-bold">${realData.conversionRate}%</p>
+                                <p class="text-purple-600 text-sm mt-2"><i class="fas fa-arrow-up mr-1"></i> 5% from last month</p>
+                            </div>
+                        </div>
+                        
+                        <!-- Recent Transactions -->
+                        <div class="bg-white rounded-xl shadow-md p-6 mb-8">
+                            <h3 class="text-xl font-bold mb-4">Recent Transactions</h3>
+                            <div class="overflow-x-auto">
+                                <table class="min-w-full divide-y divide-gray-200">
+                                    <thead>
+                                        <tr>
+                                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Transaction ID</th>
+                                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Customer</th>
+                                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Amount</th>
+                                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Currency</th>
+                                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
+                                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody class="bg-white divide-y divide-gray-200">
+                                        ${realData.recentTransactions.map(tx => `
+                                            <tr>
+                                                <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">${tx.id}</td>
+                                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${tx.customer}</td>
+                                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${tx.amount}</td>
+                                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${tx.currency}</td>
+                                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${tx.date}</td>
+                                                <td class="px-6 py-4 whitespace-nowrap text-sm">
+                                                    <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full 
+                                                        ${tx.status === 'completed' ? 'bg-green-100 text-green-800' : 
+                                                          tx.status === 'pending' ? 'bg-yellow-100 text-yellow-800' : 
+                                                          'bg-red-100 text-red-800'}">                                                    
+                                                        ${tx.status}
+                                                    </span>
+                                                </td>
+                                            </tr>
+                                        `).join('')}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                        
+                        <!-- Payment Analytics -->
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <div class="bg-white rounded-xl shadow-md p-6">
+                                <h3 class="text-xl font-bold mb-4">Payment Methods</h3>
+                                <div class="h-64 flex items-center justify-center">
+                                    <div class="text-center">
+                                        <div class="bg-gray-100 p-4 rounded-full inline-block mb-3">
+                                            <i class="fas fa-chart-pie text-3xl text-blue-600"></i>
+                                        </div>
+                                        <p class="text-gray-500">Chart visualization will appear here</p>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div class="bg-white rounded-xl shadow-md p-6">
+                                <h3 class="text-xl font-bold mb-4">Monthly Revenue</h3>
+                                <div class="h-64 flex items-center justify-center">
+                                    <div class="text-center">
+                                        <div class="bg-gray-100 p-4 rounded-full inline-block mb-3">
+                                            <i class="fas fa-chart-bar text-3xl text-blue-600"></i>
+                                        </div>
+                                        <p class="text-gray-500">Chart visualization will appear here</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                } catch (error) {
+                    console.error('Error loading dashboard data:', error);
+                    dashboardContent.innerHTML = `
+                        <div class="bg-red-100 border-l-4 border-red-500 text-red-700 p-4 rounded" role="alert">
+                            <p class="font-bold">Error</p>
+                            <p>Failed to load dashboard data. Please try again later.</p>
+                        </div>
+                    `;
+                }
+            }
+            
+            function checkAuthenticationCallback() {
+                // This function is no longer needed with our simplified approach
+                console.log('Using simplified authentication approach');
+            }
         });
     </script>
 
     <!-- Direct script for authentication to avoid module loading issues -->
     <script>
-        // Initialize variables
-        let authClient;
+        // Initialize variables for actor creation
         let actor;
-        let isAuthenticated = false;
 
         // DOM Elements
-        const navAuthButton = document.getElementById('nav-auth-button');
-        const authButton = document.getElementById('auth-button');
         const paymentForm = document.getElementById('payment-form');
         const paymentStatus = document.getElementById('payment-status');
         const paymentDetails = document.getElementById('payment-details');
-
-        // Initialize the auth client
-        async function initAuth() {
-            try {
-                console.log('Starting auth client initialization...');
-                // Make sure the AuthClient class is available
-                if (!window.ic || !window.ic.authClient || !window.ic.authClient.AuthClient) {
-                    console.error('AuthClient not found in window.ic.authClient');
-                    throw new Error('AuthClient not available. Please check your internet connection and try again.');
-                }
-                
-                // Create the auth client
-                authClient = await window.ic.authClient.AuthClient.create();
-                console.log('Auth client created successfully');
-                
-                // Check if the user is already authenticated
-                const authenticated = await authClient.isAuthenticated();
-                updateAuthState(authenticated);
-                console.log('Auth client initialized, authenticated:', authenticated);
-                
-                // Add event listeners to auth buttons after successful initialization
-                if (navAuthButton) {
-                    navAuthButton.addEventListener('click', handleAuth);
-                }
-                if (authButton) {
-                    authButton.addEventListener('click', handleAuth);
-                }
-                
-                // Handle Candid UI login button if present
-                // This checks if we're in the Candid UI context
-                const candidLoginButton = document.querySelector('.login-button');
-                if (candidLoginButton) {
-                    console.log('Candid UI login button found, adding event listener');
-                    candidLoginButton.addEventListener('click', async () => {
-                        try {
-                            await handleCandidAuth();
-                        } catch (error) {
-                            console.error('Candid UI auth error:', error);
-                        }
-                    });
-                }
-            } catch (error) {
-                console.error('Failed to initialize auth client:', error);
-                // Don't show alert on page load, just log the error
-                console.warn('Authentication initialization failed. Will retry when user clicks login.');
-            }
-        }
+        
+        // This is now handled in the main DOMContentLoaded event listener
 
         // Create actor with the provided identity
         function createActor(identity) {
-            const agent = new HttpAgent({ identity, host: "http://127.0.0.1:8080" });
-            
-            // When deploying locally, we need to fetch the root key
-            agent.fetchRootKey().catch(err => {
-                console.warn("Unable to fetch root key. Check to ensure that your local replica is running");
-                console.error(err);
+            // For mainnet, we use the IC host and don't need to fetch the root key
+            const agent = new HttpAgent({ 
+                identity, 
+                host: "https://icp-api.io" 
             });
-
+            
             // Create an actor with the specified interface and canister ID
-            // Use the direct string value to avoid Principal parsing issues
             return Actor.createActor(idlFactory, {
                 agent,
-                canisterId: "bkyz2-fmaaa-aaaaa-qaaaq-cai",
+                canisterId: BTC_PAYMENT_CANISTER_ID,
             });
         }
-
-        // Update UI based on authentication state
-        function updateAuthState(authenticated) {
-            isAuthenticated = authenticated;
-            if (authenticated) {
-                if (navAuthButton) navAuthButton.textContent = 'Sign Out';
-                if (authButton) {
-                    authButton.innerHTML = '<i class="fas fa-sign-out-alt mr-2"></i><span>Sign Out</span>';
-                    paymentForm.classList.remove('hidden');
-                }
-            } else {
-                if (navAuthButton) navAuthButton.textContent = 'Sign In';
-                if (authButton) {
-                    authButton.innerHTML = '<i class="fab fa-bitcoin text-xl mr-2"></i><span>Sign in with Bitcoin</span>';
-                    paymentForm.classList.add('hidden');
-                }
-                paymentStatus.classList.add('hidden');
+        
+        // Function to create a payment request
+        function createPaymentRequest() {
+            const amount = document.getElementById('amount').value;
+            const recipient = document.getElementById('recipient').value;
+            const memo = document.getElementById('memo').value;
+            
+            if (!amount || !recipient) {
+                alert('Please fill in all required fields');
+                return;
             }
+            
+            console.log('Creating payment request:', { amount, recipient, memo });
+            
+            // Show the payment status section
+            const paymentStatus = document.getElementById('payment-status');
+            const paymentDetails = document.getElementById('payment-details');
+            
+            if (paymentStatus) {
+                paymentStatus.classList.remove('hidden');
+            }
+            
+            if (paymentDetails) {
+                // Generate a random payment ID
+                const paymentId = 'btc-' + Math.floor(Math.random() * 1000000);
+                
+                // Format the amount to 8 decimal places
+                const formattedAmount = parseFloat(amount).toFixed(8);
+                
+                // Create HTML for payment details
+                paymentDetails.innerHTML = `
+                    <div class="flex justify-between">
+                        <span class="text-gray-600">Payment ID:</span>
+                        <span class="font-mono font-medium">${paymentId}</span>
+                    </div>
+                    <div class="flex justify-between">
+                        <span class="text-gray-600">Amount:</span>
+                        <span class="font-mono font-medium">${formattedAmount} BTC</span>
+                    </div>
+                    <div class="flex justify-between">
+                        <span class="text-gray-600">Recipient:</span>
+                        <span class="font-mono font-medium text-xs truncate">${recipient}</span>
+                    </div>
+                    <div class="flex justify-between">
+                        <span class="text-gray-600">Status:</span>
+                        <span class="text-green-600 font-medium">Pending</span>
+                    </div>
+                    <div class="mt-4 pt-4 border-t border-gray-200">
+                        <button onclick="simulatePayment()" class="w-full bg-green-500 text-white py-2 px-4 rounded-lg hover:bg-green-600 transition-all duration-300 font-semibold">
+                            Simulate Payment
+                        </button>
+                    </div>
+                `;
+                
+                // Scroll to the payment details
+                paymentDetails.scrollIntoView({ behavior: 'smooth' });
+            }
+        }
+        
+        // Function to simulate a payment
+        function simulatePayment() {
+            const paymentDetails = document.getElementById('payment-details');
+            
+            if (paymentDetails) {
+                // Update the status to completed
+                const statusElement = paymentDetails.querySelector('span.text-green-600');
+                if (statusElement) {
+                    statusElement.textContent = 'Completed';
+                }
+                
+                // Replace the simulate button with a success message
+                const buttonContainer = paymentDetails.querySelector('.mt-4');
+                if (buttonContainer) {
+                    buttonContainer.innerHTML = `
+                        <div class="bg-green-100 text-green-800 p-4 rounded-lg text-center">
+                            <i class="fas fa-check-circle text-2xl mb-2"></i>
+                            <p class="font-medium">Payment successfully processed!</p>
+                        </div>
+                    `;
+                }
+                
+                // Show a success message
+                alert('Payment successfully processed!');
+            }
+        }
+
+        // This function is now handled directly in the DOMContentLoaded event listener
+        function updateAuthState(authenticated) {
+            console.log('Legacy updateAuthState called with:', authenticated);
+            // No longer used
         }
 
         // Initialize the actor
@@ -562,8 +2051,8 @@
                     updateAuthState(false);
                     console.log("User logged out");
                 } else {
-                    // Use the Internet Identity service for authentication
-                    const identityProvider = `http://127.0.0.1:8080?canisterId=${INTERNET_IDENTITY_CANISTER_ID}`;
+                    // Use the Internet Identity service for authentication on mainnet
+                    const identityProvider = `https://identity.ic0.app`;
                     console.log("Using identity provider:", identityProvider);
                     
                     // Open the Internet Identity login window
@@ -607,8 +2096,8 @@
             }
             
             try {
-                // Use the Internet Identity service for authentication
-                const identityProvider = `http://127.0.0.1:8080?canisterId=${INTERNET_IDENTITY_CANISTER_ID}`;
+                // Use the Internet Identity service for authentication on mainnet
+                const identityProvider = `https://identity.ic0.app`;
                 console.log("Candid UI using identity provider:", identityProvider);
                 
                 // Open the Internet Identity login window for Candid UI
@@ -680,21 +2169,27 @@
         document.addEventListener('DOMContentLoaded', () => {
             console.log('DOM fully loaded');
             
-            // Initialize authentication with a slight delay to ensure all scripts are loaded
-            setTimeout(() => {
-                console.log('Initializing auth after delay...');
-                initAuth();
-                
-                // Check if we're in Candid UI and inject our authentication handler
-                const isCandidUI = document.querySelector('.candid-header') || 
-                                  document.querySelector('.candid-toolbar') || 
-                                  document.title.includes('Candid');
-                                  
-                if (isCandidUI) {
-                    console.log('Detected Candid UI, setting up auth integration');
-                    setupCandidUIAuth();
+            // Initialize ckBTC UI when authenticated
+            window.authClient.isAuthenticated().then(isAuthenticated => {
+                if (isAuthenticated) {
+                    const identity = window.authClient.getIdentity();
+                    // Initialize ckBTC UI
+                    window.ckbtcUI = new window.CKBTCUserInterface();
+                    window.ckbtcUI.initialize(identity).then(success => {
+                        if (success) {
+                            console.log('ckBTC UI initialized successfully');
+                        } else {
+                            console.error('Failed to initialize ckBTC UI');
+                        }
+                    });
                 }
-            }, 1000);
+            });
+            
+            // Initialize authentication immediately
+            console.log('Initializing auth...');
+            initAuth();
+            
+            // We're using direct auth button handlers now
             
             // We'll add event listeners in the initAuth function after successful initialization
             // This ensures we don't try to use the auth client before it's ready
@@ -730,43 +2225,437 @@
             if (document.getElementById('submit-payment')) {
                 document.getElementById('submit-payment').addEventListener('click', async () => {
                     try {
+                        // Check if user is authenticated
+                        const isAuthenticated = localStorage.getItem('btcx_authenticated') === 'true';
+                        if (!isAuthenticated) {
+                            alert('Please sign in to create a payment request');
+                            return;
+                        }
+                        
                         const amount = BigInt(Math.floor(parseFloat(document.getElementById('amount').value) * 100000000));
                         const recipient = document.getElementById('recipient').value;
                         const memo = document.getElementById('memo').value;
+                        const currency = document.getElementById('currency-ckbtc').checked ? 'ckBTC' : 'BTC';
                         
                         if (!amount || !recipient) {
                             alert('Please fill in all required fields');
                             return;
                         }
                         
-                        // For demo purposes, simulate a successful payment request
-                        alert('Payment request created successfully!');
+                        // Validate address format based on currency
+                        if (currency === 'BTC' && !recipient.startsWith('bc1') && !recipient.startsWith('1') && !recipient.startsWith('3')) {
+                            alert('Please enter a valid Bitcoin address for BTC payments');
+                            return;
+                        } else if (currency === 'ckBTC' && !recipient.includes('-')) {
+                            alert('Please enter a valid ICP principal ID for ckBTC payments');
+                            return;
+                        }
+                        
+                                // For demo purposes, simulate a successful payment request
+                        alert(`Payment request created successfully! Currency: ${currency}`);
+                        
+                        // Get user principal from localStorage
+                        const userPrincipal = localStorage.getItem('btcx_principal') || 'anonymous';
                         
                         // Display payment details
-                        paymentStatus.classList.remove('hidden');
-                        paymentDetails.innerHTML = `
-                            <div class="flex justify-between">
-                                <span class="font-semibold">Amount:</span>
-                                <span>${document.getElementById('amount').value} BTC</span>
-                            </div>
-                            <div class="flex justify-between">
-                                <span class="font-semibold">Recipient:</span>
-                                <span class="text-sm break-all">${recipient}</span>
-                            </div>
-                            <div class="flex justify-between">
-                                <span class="font-semibold">Status:</span>
-                                <span class="text-yellow-500">Pending</span>
-                            </div>
-                            <div class="flex justify-between">
-                                <span class="font-semibold">Request ID:</span>
-                                <span class="text-sm break-all">demo-payment-id-${Date.now()}</span>
-                            </div>
-                        `;
+                        const paymentStatus = document.getElementById('payment-status');
+                        const paymentDetails = document.getElementById('payment-details');
+                        
+                        if (paymentStatus) paymentStatus.classList.remove('hidden');
+                        if (paymentDetails) {
+                            paymentDetails.innerHTML = `
+                                <div class="flex justify-between">
+                                    <span class="font-semibold">Amount:</span>
+                                    <span>${document.getElementById('amount').value} ${document.getElementById('currency-ckbtc').checked ? 'ckBTC' : 'BTC'}</span>
+                                </div>
+                                <div class="flex justify-between">
+                                    <span class="font-semibold">Recipient:</span>
+                                    <span class="text-sm break-all">${recipient}</span>
+                                </div>
+                                <div class="flex justify-between">
+                                    <span class="font-semibold">Status:</span>
+                                    <span class="text-yellow-500">Pending</span>
+                                </div>
+                                <div class="flex justify-between">
+                                    <span class="font-semibold">Request ID:</span>
+                                    <span class="text-sm break-all">demo-payment-id-${Date.now()}</span>
+                                </div>
+                                <div class="flex justify-between">
+                                    <span class="font-semibold">Created By:</span>
+                                    <span class="text-sm break-all">${userPrincipal}</span>
+                                </div>
+                            `;
+                        }
                     } catch (error) {
                         console.error('Error creating payment request:', error);
                         alert('Error creating payment request: ' + error.message);
                     }
                 });
+            }
+        });
+    </script>
+
+    <!-- ckBTC Integration Scripts -->
+    <script src="assets/js/ckbtc-integration.js"></script>
+    <script src="assets/js/ckbtc-ui.js"></script>
+    
+    <!-- ckBTC UI Initialization -->
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            // Initialize ckBTC UI components
+            const refreshBalanceBtn = document.getElementById('refresh-ckbtc-balance');
+            const viewHistoryBtn = document.getElementById('view-ckbtc-history');
+            const sendCkBTCForm = document.getElementById('send-ckbtc-form');
+            const convertToCkBTCTab = document.getElementById('convert-to-ckbtc-tab');
+            const convertFromCkBTCTab = document.getElementById('convert-from-ckbtc-tab');
+            const convertToCkBTCFormContainer = document.getElementById('convert-to-ckbtc-form-container');
+            const convertFromCkBTCFormContainer = document.getElementById('convert-from-ckbtc-form-container');
+            const convertToCkBTCForm = document.getElementById('convert-to-ckbtc-form');
+            const convertFromCkBTCForm = document.getElementById('convert-from-ckbtc-form');
+            const transactionHistory = document.getElementById('ckbtc-transaction-history');
+            
+            // Tab switching for conversion forms
+            if (convertToCkBTCTab && convertFromCkBTCTab) {
+                convertToCkBTCTab.addEventListener('click', function() {
+                    convertToCkBTCTab.classList.remove('bg-gray-200', 'text-gray-700');
+                    convertToCkBTCTab.classList.add('bg-blue-600', 'text-white');
+                    convertFromCkBTCTab.classList.remove('bg-blue-600', 'text-white');
+                    convertFromCkBTCTab.classList.add('bg-gray-200', 'text-gray-700');
+                    
+                    if (convertToCkBTCFormContainer) convertToCkBTCFormContainer.classList.remove('hidden');
+                    if (convertFromCkBTCFormContainer) convertFromCkBTCFormContainer.classList.add('hidden');
+                });
+                
+                convertFromCkBTCTab.addEventListener('click', function() {
+                    convertFromCkBTCTab.classList.remove('bg-gray-200', 'text-gray-700');
+                    convertFromCkBTCTab.classList.add('bg-blue-600', 'text-white');
+                    convertToCkBTCTab.classList.remove('bg-blue-600', 'text-white');
+                    convertToCkBTCTab.classList.add('bg-gray-200', 'text-gray-700');
+                    
+                    if (convertFromCkBTCFormContainer) convertFromCkBTCFormContainer.classList.remove('hidden');
+                    if (convertToCkBTCFormContainer) convertToCkBTCFormContainer.classList.add('hidden');
+                });
+            }
+            
+            // Initialize ckBTC functionality when user is authenticated
+            function initCkBTCIntegration() {
+                if (!window.isAuthenticated) return;
+                
+                try {
+                    // Initialize the ckBTC integration with the user's identity
+                    window.ckBTCIntegration.init(authClient.getIdentity())
+                        .then(() => {
+                            console.log('ckBTC integration initialized successfully');
+                            // Fetch initial balance
+                            return window.ckBTCIntegration.getBalance();
+                        })
+                        .then(balance => {
+                            // Update the UI with the balance
+                            const balanceElement = document.getElementById('ckbtc-balance');
+                            if (balanceElement) {
+                                balanceElement.textContent = balance + ' ckBTC';
+                            }
+                        })
+                        .catch(error => {
+                            console.error('Error initializing ckBTC integration:', error);
+                            const balanceElement = document.getElementById('ckbtc-balance');
+                            if (balanceElement) {
+                                balanceElement.textContent = 'Error loading balance';
+                            }
+                        });
+                } catch (error) {
+                    console.error('Failed to initialize ckBTC integration:', error);
+                }
+            }
+            
+            // Refresh balance button
+            if (refreshBalanceBtn) {
+                refreshBalanceBtn.addEventListener('click', function() {
+                    if (!window.isAuthenticated) {
+                        alert('Please login with your Internet Identity to view your ckBTC balance');
+                        return;
+                    }
+                    
+                    const balanceElement = document.getElementById('ckbtc-balance');
+                    if (balanceElement) {
+                        balanceElement.textContent = 'Loading...';
+                    }
+                    
+                    window.ckBTCIntegration.getBalance()
+                        .then(balance => {
+                            if (balanceElement) {
+                                balanceElement.textContent = balance + ' ckBTC';
+                            }
+                        })
+                        .catch(error => {
+                            console.error('Error fetching ckBTC balance:', error);
+                            if (balanceElement) {
+                                balanceElement.textContent = 'Error loading balance';
+                            }
+                        });
+                });
+            }
+            
+            // View transaction history
+            if (viewHistoryBtn) {
+                viewHistoryBtn.addEventListener('click', function() {
+                    if (!window.isAuthenticated) {
+                        alert('Please login with your Internet Identity to view your transaction history');
+                        return;
+                    }
+                    
+                    if (transactionHistory) {
+                        transactionHistory.classList.remove('hidden');
+                        transactionHistory.innerHTML = '<div class="text-center py-4"><div class="spinner-border text-primary" role="status"></div><p class="mt-2">Loading transaction history...</p></div>';
+                        
+                        window.ckBTCIntegration.getTransactionHistory()
+                            .then(transactions => {
+                                if (transactions.length === 0) {
+                                    transactionHistory.innerHTML = '<div class="text-center py-4"><p>No transactions found</p></div>';
+                                    return;
+                                }
+                                
+                                let html = `
+                                    <h4 class="text-lg font-semibold mb-4">Transaction History</h4>
+                                    <table class="min-w-full divide-y divide-gray-200">
+                                        <thead>
+                                            <tr>
+                                                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
+                                                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Type</th>
+                                                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Amount</th>
+                                                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                                                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Details</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody class="bg-white divide-y divide-gray-200">
+                                `;
+                                
+                                transactions.forEach(tx => {
+                                    const date = new Date(tx.timestamp).toLocaleString();
+                                    html += `
+                                        <tr>
+                                            <td class="px-4 py-3 whitespace-nowrap text-sm">${date}</td>
+                                            <td class="px-4 py-3 whitespace-nowrap text-sm">${tx.type}</td>
+                                            <td class="px-4 py-3 whitespace-nowrap text-sm">${tx.amount} ckBTC</td>
+                                            <td class="px-4 py-3 whitespace-nowrap text-sm">
+                                                <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${tx.status === 'completed' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}">
+                                                    ${tx.status}
+                                                </span>
+                                            </td>
+                                            <td class="px-4 py-3 whitespace-nowrap text-sm text-blue-600 hover:text-blue-800 cursor-pointer" onclick="alert('Transaction details: ' + '${tx.id}')">
+                                                View
+                                            </td>
+                                        </tr>
+                                    `;
+                                });
+                                
+                                html += `
+                                        </tbody>
+                                    </table>
+                                `;
+                                
+                                transactionHistory.innerHTML = html;
+                            })
+                            .catch(error => {
+                                console.error('Error fetching transaction history:', error);
+                                transactionHistory.innerHTML = '<div class="text-center py-4"><p class="text-red-500">Error loading transaction history</p></div>';
+                            });
+                    }
+                });
+            }
+            
+            // Send ckBTC form
+            if (sendCkBTCForm) {
+                sendCkBTCForm.addEventListener('submit', function(e) {
+                    e.preventDefault();
+                    
+                    if (!window.isAuthenticated) {
+                        alert('Please login with your Internet Identity to send ckBTC');
+                        return;
+                    }
+                    
+                    const recipient = document.getElementById('ckbtc-recipient').value;
+                    const amount = document.getElementById('ckbtc-amount').value;
+                    
+                    if (!recipient || !amount) {
+                        alert('Please fill in all required fields');
+                        return;
+                    }
+                    
+                    // Disable the send button
+                    const sendButton = document.getElementById('send-ckbtc-button');
+                    if (sendButton) {
+                        sendButton.disabled = true;
+                        sendButton.textContent = 'Sending...';
+                    }
+                    
+                    window.ckBTCIntegration.sendCkBTC(recipient, amount)
+                        .then(result => {
+                            alert('ckBTC sent successfully!');
+                            // Reset form
+                            sendCkBTCForm.reset();
+                            // Refresh balance
+                            return window.ckBTCIntegration.getBalance();
+                        })
+                        .then(balance => {
+                            const balanceElement = document.getElementById('ckbtc-balance');
+                            if (balanceElement) {
+                                balanceElement.textContent = balance + ' ckBTC';
+                            }
+                        })
+                        .catch(error => {
+                            console.error('Error sending ckBTC:', error);
+                            alert('Error sending ckBTC: ' + error.message);
+                        })
+                        .finally(() => {
+                            // Re-enable the send button
+                            if (sendButton) {
+                                sendButton.disabled = false;
+                                sendButton.textContent = 'Send ckBTC';
+                            }
+                        });
+                });
+            }
+            
+            // Convert BTC to ckBTC form
+            if (convertToCkBTCForm) {
+                convertToCkBTCForm.addEventListener('submit', function(e) {
+                    e.preventDefault();
+                    
+                    if (!window.isAuthenticated) {
+                        alert('Please login with your Internet Identity to send ckBTC');
+                        return;
+                    }
+                    
+                    // Disable the convert button
+                    const convertButton = document.getElementById('convert-to-ckbtc-button');
+                    if (convertButton) {
+                        convertButton.disabled = true;
+                        convertButton.textContent = 'Getting address...';
+                    }
+                    
+                    window.ckBTCIntegration.getBTCDepositAddress()
+                        .then(address => {
+                            // Show the deposit instructions
+                            const depositInstructions = document.getElementById('btc-deposit-instructions');
+                            const depositAddress = document.getElementById('btc-deposit-address');
+                            const depositQR = document.getElementById('btc-deposit-qr');
+                            
+                            if (depositInstructions) depositInstructions.classList.remove('hidden');
+                            if (depositAddress) depositAddress.textContent = address;
+                            
+                            // Generate QR code for the address
+                            if (depositQR && window.QRCode) {
+                                depositQR.innerHTML = '';
+                                new QRCode(depositQR, {
+                                    text: address,
+                                    width: 128,
+                                    height: 128
+                                });
+                            }
+                        })
+                        .catch(error => {
+                            console.error('Error getting BTC deposit address:', error);
+                            alert('Error getting BTC deposit address: ' + error.message);
+                        })
+                        .finally(() => {
+                            // Re-enable the convert button
+                            if (convertButton) {
+                                convertButton.disabled = false;
+                                convertButton.textContent = 'Get BTC Deposit Address';
+                            }
+                        });
+                });
+            }
+            
+            // Convert ckBTC to BTC form
+            if (convertFromCkBTCForm) {
+                convertFromCkBTCForm.addEventListener('submit', function(e) {
+                    e.preventDefault();
+                    
+                    if (!window.isAuthenticated) {
+                        alert('Please login with your Internet Identity to convert ckBTC to BTC');
+                        return;
+                    }
+                    
+                    const btcAddress = document.getElementById('btc-address').value;
+                    const amount = document.getElementById('convert-amount').value;
+                    
+                    if (!btcAddress || !amount) {
+                        alert('Please fill in all required fields');
+                        return;
+                    }
+                    
+                    // Disable the convert button
+                    const convertButton = document.getElementById('convert-from-ckbtc-button');
+                    if (convertButton) {
+                        convertButton.disabled = true;
+                        convertButton.textContent = 'Processing...';
+                    }
+                    
+                    window.ckBTCIntegration.withdrawToBTC(btcAddress, amount)
+                        .then(result => {
+                            alert('Withdrawal request submitted successfully!');
+                            // Show withdrawal details
+                            const withdrawalDetails = document.getElementById('btc-withdrawal-details');
+                            if (withdrawalDetails) {
+                                withdrawalDetails.classList.remove('hidden');
+                                withdrawalDetails.innerHTML = `
+                                    <div class="mt-4 bg-blue-50 border border-blue-200 rounded-md p-3">
+                                        <h5 class="font-medium text-blue-800 mb-2">Withdrawal Request Submitted</h5>
+                                        <p class="text-sm text-gray-600 mb-2">Your withdrawal request has been submitted. The BTC will be sent to the provided address after processing.</p>
+                                        <div class="flex justify-between text-sm">
+                                            <span class="font-medium">Amount:</span>
+                                            <span>${amount} ckBTC</span>
+                                        </div>
+                                        <div class="flex justify-between text-sm">
+                                            <span class="font-medium">BTC Address:</span>
+                                            <span class="break-all">${btcAddress}</span>
+                                        </div>
+                                        <div class="flex justify-between text-sm">
+                                            <span class="font-medium">Status:</span>
+                                            <span>Processing</span>
+                                        </div>
+                                        <p class="text-xs text-blue-600 mt-2">Processing time: ~10-30 minutes</p>
+                                    </div>
+                                `;
+                            }
+                            
+                            // Reset form
+                            convertFromCkBTCForm.reset();
+                            // Refresh balance
+                            return window.ckBTCIntegration.getBalance();
+                        })
+                        .then(balance => {
+                            const balanceElement = document.getElementById('ckbtc-balance');
+                            if (balanceElement) {
+                                balanceElement.textContent = balance + ' ckBTC';
+                            }
+                        })
+                        .catch(error => {
+                            console.error('Error withdrawing to BTC:', error);
+                            alert('Error withdrawing to BTC: ' + error.message);
+                        })
+                        .finally(() => {
+                            // Re-enable the convert button
+                            if (convertButton) {
+                                convertButton.disabled = false;
+                                convertButton.textContent = 'Withdraw to BTC';
+                            }
+                        });
+                });
+            }
+            
+            // Initialize ckBTC integration when authentication state changes
+            document.addEventListener('authStateChanged', function(e) {
+                if (e.detail.isAuthenticated) {
+                    initCkBTCIntegration();
+                }
+            });
+            
+            // Initialize ckBTC integration if already authenticated
+            if (window.isAuthenticated) {
+                initCkBTCIntegration();
             }
         });
     </script>

@@ -1,4 +1,4 @@
-# Bitcoin Payment Gateway with Internet Computer Protocol
+# ICPesa Payment Gateway with Internet Computer Protocol
 
 ![Bitcoin Payment Gateway](https://upload.wikimedia.org/wikipedia/commons/thumb/4/46/Bitcoin.svg/128px-Bitcoin.svg.png)
 
@@ -23,25 +23,45 @@ A secure, non-custodial Bitcoin payment gateway that allows businesses to accept
 
 ## Overview
 
-The Bitcoin Payment Gateway is a decentralized application built on the Internet Computer Protocol that enables businesses to accept Bitcoin payments directly without relying on third-party payment processors. The application provides a secure, non-custodial solution that gives users full control over their funds while leveraging the security and reliability of the Internet Computer blockchain.
+The ICPesa Payment Gateway is a decentralized application built on the Internet Computer Protocol that enables businesses to accept Bitcoin payments directly without relying on third-party payment processors. The application provides a secure, non-custodial solution that gives users full control over their funds while leveraging the security and reliability of the Internet Computer blockchain.
+
+### Recent Updates
+
+- **Advanced Bitcoin Integration**: Implemented ckBTC, direct Bitcoin access, and advanced transaction signing
+- **Real Wallet Connections**: Implemented actual connections to Internet Identity, MetaMask, and Bitcoin wallets
+- **Enhanced Authentication Flow**: Improved sign-in/sign-out process with explicit user approval
+- **Improved User Experience**: Better feedback during wallet connection process
+- **Security Enhancements**: Strengthened authentication and session management
 
 ## Features
 
+### Core Features
 - **Direct Bitcoin Integration**: Seamlessly connect with the Bitcoin network using ICP's canister smart contracts
 - **Non-custodial Payment Processing**: Users maintain control of their private keys and funds
-- **Internet Identity Authentication**: Secure sign-in using Internet Identity service
+- **Multiple Wallet Support**: Connect with Internet Identity, MetaMask, and Bitcoin wallets
+- **Secure Authentication**: Real wallet connections with proper authentication flows
 - **Real-time Transaction Monitoring**: Track payment status and confirmations in real-time
-- **Support for ckBTC**: Use chain-key Bitcoin for fast and low-cost transactions
 - **Responsive UI**: Modern, mobile-friendly user interface
 - **Candid UI Integration**: Enhanced authentication for the Candid interface
 
+### Advanced Bitcoin Features
+
+- **ckBTC Integration**: Use ckBTC—a trustless, non-custodial, 1:1 backed synthetic Bitcoin twin token that utilizes ICRC1/ICRC2 token standards—for fast finality (approximately 1sec) and low cost (approximately $0.01) Bitcoin transactions. Perfect for payment systems, rewards programs, or lending protocols powered by Bitcoin's liquidity.
+
+- **Direct Bitcoin Access with ICP**: Utilize the Bitcoin Integration API to retrieve UTXOs, check balances, view fee percentiles, and access block headers directly from ICP canisters. This enables building data-rich, responsive DeFi applications.
+
+- **Advanced Transaction Signing**: Take advantage of ICP's native support for Threshold Schnorr signatures to handle Taproot transactions. This capability is crucial for innovative use cases involving Ordinals, Runes, and BRC-20 assets. Also includes Threshold ECDSA signatures for simpler Bitcoin transactions.
+
 ## Architecture
 
-The application consists of three main components:
+The application consists of several main components:
 
 1. **Backend Canister (Motoko)**: Handles payment processing, user authentication, and data storage
 2. **Frontend Assets**: Provides the user interface and client-side logic
 3. **Internet Identity Canister**: Manages secure authentication
+4. **Bitcoin API Canister**: Provides direct access to the Bitcoin network
+5. **ckBTC Ledger Canister**: Manages ckBTC token balances and transfers
+6. **ckBTC Minter Canister**: Handles conversion between BTC and ckBTC
 
 ### System Diagram
 
@@ -81,8 +101,8 @@ sh -ci "$(curl -fsSL https://internetcomputer.org/install.sh)"
 
 2. Clone the repository:
 ```bash
-git clone https://github.com/yourusername/btc-payment.git
-cd btc-payment
+git clone https://github.com/davidmachucheDM/icpesa-payment.git
+cd icpesa-payment
 ```
 
 3. Start the local development network:
@@ -147,18 +167,21 @@ dfx deploy
 
 The backend canister provides the following methods:
 
-#### `createPaymentRequest`
+#### Core Payment Methods
+
+##### `createPaymentRequest`
 
 Creates a new payment request and returns a unique payment ID.
 
 ```motoko
-createPaymentRequest(amount: Nat64, recipient: Text, memo: Text) : async Text
+createPaymentRequest(amount: Nat64, recipient: Text, memo: Text, paymentType: PaymentType) : async Text
 ```
 
 **Parameters:**
 - `amount`: The amount in Satoshis (1 BTC = 100,000,000 Satoshis)
 - `recipient`: The Bitcoin address of the recipient
 - `memo`: An optional memo or description for the payment
+- `paymentType`: The type of payment (#Bitcoin or #CkBtc)
 
 **Returns:**
 - A unique payment ID (e.g., "PAY-123")
@@ -200,6 +223,100 @@ Retrieves all payments associated with a specific user.
 listUserPayments(user: Principal) : async [(Text, PaymentRequest)]
 ```
 
+#### ckBTC Integration Methods
+
+##### `getCkBtcBalance`
+
+Retrieves the ckBTC balance for a user.
+
+```motoko
+getCkBtcBalance(user: Principal) : async Nat
+```
+
+##### `transferCkBtc`
+
+Transfers ckBTC tokens from one user to another.
+
+```motoko
+transferCkBtc(to: Principal, amount: Nat, memo: ?Blob, paymentId: Text) : async Result.Result<Nat, Text>
+```
+
+##### `mintCkBtc`
+
+Initiates the minting of ckBTC from Bitcoin.
+
+```motoko
+mintCkBtc(satoshi: Nat64) : async Result.Result<Text, Text>
+```
+
+##### `withdrawCkBtc`
+
+Withdraws ckBTC to a Bitcoin address.
+
+```motoko
+withdrawCkBtc(amount: Nat64, btcAddress: Text) : async Result.Result<Text, Text>
+```
+
+#### Direct Bitcoin Access Methods
+
+##### `getBitcoinAddress`
+
+Retrieves or generates a Bitcoin address for a user.
+
+```motoko
+getBitcoinAddress() : async BitcoinAddress
+```
+
+##### `getUtxos`
+
+Retrieves the UTXOs for a Bitcoin address.
+
+```motoko
+getUtxos(address: BitcoinAddress) : async [UTXO]
+```
+
+##### `getBitcoinBalance`
+
+Retrieves the Bitcoin balance for an address.
+
+```motoko
+getBitcoinBalance(address: BitcoinAddress) : async Satoshi
+```
+
+##### `getBitcoinFeePercentiles`
+
+Retrieves current Bitcoin fee estimates.
+
+```motoko
+getBitcoinFeePercentiles() : async [MillisatoshiPerByte]
+```
+
+#### Advanced Transaction Signing Methods
+
+##### `createBitcoinTransaction`
+
+Creates a Bitcoin transaction using Threshold ECDSA signatures.
+
+```motoko
+createBitcoinTransaction(paymentId: Text, inputs: [BitcoinTypes.OutPoint], outputs: [(BitcoinAddress, Satoshi)], fee: Satoshi) : async Result.Result<Text, Text>
+```
+
+##### `signWithThresholdSchnorr`
+
+Signs a transaction using Threshold Schnorr signatures for Taproot.
+
+```motoko
+signWithThresholdSchnorr(txId: Text, derivationPath: [Blob]) : async Result.Result<[Nat8], Text>
+```
+
+##### `processOrdinals`
+
+Processes Ordinals and BRC-20 tokens.
+
+```motoko
+processOrdinals(txId: Text, inscriptionId: Text) : async Result.Result<Text, Text>
+```
+
 **Parameters:**
 - `user`: The principal ID of the user
 
@@ -234,6 +351,34 @@ Displays the payment details in the UI.
 
 ## Authentication
 
+The application supports multiple wallet authentication methods:
+
+### Internet Identity
+
+Internet Identity is a blockchain authentication system developed by DFINITY for the Internet Computer. It provides a secure way to authenticate without usernames or passwords.
+
+1. Click the "Sign In" button
+2. Select "Internet Identity" from the wallet options
+3. Complete the authentication process in the Internet Identity interface
+4. Once authenticated, you'll be returned to the application with your identity verified
+
+### MetaMask
+
+MetaMask is a popular Ethereum wallet that can be used to authenticate with the application:
+
+1. Ensure you have the MetaMask browser extension installed
+2. Click the "Sign In" button and select "MetaMask"
+3. Approve the connection request in the MetaMask popup
+4. Your Ethereum address will be used as your identity in the application
+
+### Bitcoin Wallet
+
+The application also supports connecting with Bitcoin wallets:
+
+1. Click the "Sign In" button and select "Bitcoin Wallet"
+2. Follow the prompts to connect your Bitcoin wallet
+3. Once connected, you can make and receive Bitcoin payments directly
+
 The application uses Internet Identity for secure authentication. The authentication flow works as follows:
 
 1. **User Initiates Login**: The user clicks the "Sign In" button in the application.
@@ -251,6 +396,30 @@ The application uses Internet Identity for secure authentication. The authentica
 The application also includes special handling for authentication in the Candid UI, allowing developers to test the backend API with authenticated requests.
 
 ## Security
+
+The Bitcoin Payment Gateway prioritizes security through several measures:
+
+### Non-custodial Design
+
+The application never takes custody of your private keys or funds. All transactions are signed directly by your wallet, ensuring you maintain full control of your assets at all times.
+
+### Secure Authentication
+
+- **Internet Identity**: Uses cryptographic authentication without passwords
+- **MetaMask**: Implements secure wallet connection using industry-standard methods
+- **Bitcoin Wallet**: Direct connection to your Bitcoin wallet without intermediaries
+
+### Data Protection
+
+- All sensitive data is stored securely on the Internet Computer blockchain
+- Communication between components is encrypted
+- No personal data is stored unnecessarily
+
+### Best Practices
+
+- Regular security audits
+- Open-source code for transparency
+- Adherence to blockchain security standards
 
 The Bitcoin Payment Gateway implements several security measures to protect user funds and data:
 
@@ -295,6 +464,18 @@ open http://localhost:8080/?canisterId=$(dfx canister id frontend)
 3. Create a test payment request and verify that it appears in the payment list.
 
 ## Deployment
+
+The ICPesa Payment Gateway has been successfully deployed to the Internet Computer mainnet and is accessible at the following URLs:
+
+### Backend Canister (ICPesa Payment)
+- Canister ID: `2x6e4-aqaaa-aaaad-qg66a-cai`
+- Candid Interface URL: https://a4gq6-oaaaa-aaaab-qaa4q-cai.raw.icp0.io/?id=2x6e4-aqaaa-aaaad-qg66a-cai
+
+### Frontend Canister
+- Canister ID: `2q7ci-niaaa-aaaad-qg66q-cai`
+- Frontend URL: https://2q7ci-niaaa-aaaad-qg66q-cai.icp0.io/
+
+To deploy your own instance of the application to the IC mainnet, follow these steps:
 
 ### Deploying to the IC Mainnet
 

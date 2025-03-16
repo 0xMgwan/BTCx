@@ -1,0 +1,31 @@
+{
+  "name": "btcx-payment-gateway",
+  "version": "1.0.0",
+  "description": "A secure, non-custodial Bitcoin payment gateway using Internet Computer Protocol",
+  "scripts": {
+    "start": "dfx start --background",
+    "deploy": "dfx deploy",
+    "build": "echo 'No build step required for static site'"
+  },
+  "engines": {
+    "node": ">=14.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/0xMgwan/BTCx.git"
+  },
+  "keywords": [
+    "bitcoin",
+    "payment",
+    "gateway",
+    "icp",
+    "internet-computer",
+    "blockchain"
+  ],
+  "author": "0xMgwan",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/0xMgwan/BTCx/issues"
+  },
+  "homepage": "https://github.com/0xMgwan/BTCx#readme"
+}

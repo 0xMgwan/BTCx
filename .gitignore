@@ -1,4 +1,4 @@
-# Logs
+dfx ledger --network ic create-canister $(dfx identity get-principal) --amount <amount_in_icp>dfx ledger --network ic create-canister $(dfx identity get-principal) --amount <amount_in_icp>dfx identity --network ic deploy-wallet <canister_id># Logs
 logs
 *.log
 npm-debug.log*

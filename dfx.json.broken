@@ -1,0 +1,92 @@
+{
+  "canisters": {
+    "icpesa_payment": {
+      "main": "src/btc_payment/main.mo",
+      "type": "motoko",
+      "dependencies": [
+        "bitcoin_types",
+        "bitcoin_api",
+        "ckbtc_ledger",
+        "ckbtc_minter"
+      ]
+    },
+    "frontend": {
+      "dependencies": [
+        "icpesa_payment",
+        "internet_identity"
+      ],
+      "source": [
+        "src/frontend/assets"
+      ],
+      "type": "assets"
+    },
+    "internet_identity": {
+      "type": "custom",
+      "candid": "https://github.com/dfinity/internet-identity/releases/latest/download/internet_identity.did",
+      "wasm": "https://github.com/dfinity/internet-identity/releases/latest/download/internet_identity_dev.wasm.gz",
+      "shrink": false,
+      "remote": {
+        "id": {
+          "ic": "rdmx6-jaaaa-aaaaa-aaadq-cai"
+        }
+      }
+    },
+    "bitcoin_types": {
+      "type": "custom",
+      "candid": "https://github.com/dfinity/bitcoin-canister/releases/latest/download/bitcoin_types.did",
+      "wasm": "https://github.com/dfinity/bitcoin-canister/releases/latest/download/bitcoin_types.wasm.gz",
+      "remote": {
+        "id": {
+          "ic": "m5zqv-5qaaa-aaaah-adcna-cai"
+        }
+      }
+    },
+    "bitcoin_api": {
+      "type": "custom",
+      "candid": "https://github.com/dfinity/bitcoin-canister/releases/latest/download/bitcoin_api.did",
+      "wasm": "https://github.com/dfinity/bitcoin-canister/releases/latest/download/bitcoin_api.wasm.gz",
+      "remote": {
+        "id": {
+          "ic": "mqygn-kiaaa-aaaah-adcnq-cai"
+        }
+      }
+    },
+    "ckbtc_ledger": {
+      "type": "custom",
+      "candid": "https://github.com/dfinity/ic/releases/latest/download/ic-icrc1-ledger.did",
+      "wasm": "https://github.com/dfinity/ic/releases/latest/download/ic-icrc1-ledger.wasm.gz",
+      "remote": {
+        "id": {
+          "ic": "mxzaz-hqaaa-aaaar-qaada-cai"
+        }
+      }
+    },
+    "ckbtc_minter": {
+      "type": "custom",
+      "candid": "https://github.com/dfinity/ic/releases/latest/download/ic-ckbtc-minter.did",
+      "wasm": "https://github.com/dfinity/ic/releases/latest/download/ic-ckbtc-minter.wasm.gz",
+      "remote": {
+        "id": {
+          "ic": "mqkpw-piaaa-aaaar-qaadq-cai"
+        }
+      }
+    }
+  },
+  "defaults": {
+    "build": {
+      "args": "",
+      "packtool": ""
+    }
+  },
+  "networks": {
+    "local": {
+      "bind": "127.0.0.1:8000",
+      "type": "ephemeral"
+    },
+    "ic": {
+      "providers": ["https://mainnet.dfinity.network"],
+      "type": "persistent"
+    }
+  },
+  "version": 1
+}
