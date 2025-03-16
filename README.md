@@ -1,6 +1,10 @@
 # ICPesa Payment Gateway with Internet Computer Protocol
-
-![Bitcoin Payment Gateway](https://upload.wikimedia.org/wikipedia/commons/thumb/4/46/Bitcoin.svg/128px-Bitcoin.svg.png)
+### Frontend Canister
+- Canister ID: `2q7ci-niaaa-aaaad-qg66q-cai`
+- Frontend URL: https://2q7ci-niaaa-aaaad-qg66q-cai.icp0.io/
+### Backend Canister (ICPesa Payment)
+- Canister ID: `2x6e4-aqaaa-aaaad-qg66a-cai`
+- Candid Interface URL: https://a4gq6-oaaaa-aaaab-qaa4q-cai.raw.icp0.io/?id=2x6e4-aqaaa-aaaad-qg66a-cai
 
 A secure, non-custodial Bitcoin payment gateway that allows businesses to accept Bitcoin payments without intermediaries, leveraging the Internet Computer Protocol (ICP) for secure transactions.
 
@@ -513,7 +517,6 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 
 ---
 
-© 2025 Bitcoin Payment Gateway. All rights reserved.
 dfx start
 ```
 
