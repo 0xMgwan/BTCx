@@ -29,18 +29,10 @@ A secure, non-custodial Bitcoin payment gateway that allows businesses to accept
 
 The ICPesa Payment Gateway is a decentralized application built on the Internet Computer Protocol that enables businesses to accept Bitcoin payments directly without relying on third-party payment processors. The application provides a secure, non-custodial solution that gives users full control over their funds while leveraging the security and reliability of the Internet Computer blockchain.
 
-### Recent Updates
-
-- **Advanced Bitcoin Integration**: Implemented ckBTC, direct Bitcoin access, and advanced transaction signing
-- **Real Wallet Connections**: Implemented actual connections to Internet Identity, MetaMask, and Bitcoin wallets
-- **Enhanced Authentication Flow**: Improved sign-in/sign-out process with explicit user approval
-- **Improved User Experience**: Better feedback during wallet connection process
-- **Security Enhancements**: Strengthened authentication and session management
-
 ## Features
 
 ### Core Features
-- **Direct Bitcoin Integration**: Seamlessly connect with the Bitcoin network using ICP's canister smart contracts
+- **Direct Bitcoin Integration**: Seamlessly connect with the Bitcoin network using ICP's canister smart contracts. Implemented ckBTC, direct Bitcoin access, and advanced transaction signing.
 - **Non-custodial Payment Processing**: Users maintain control of their private keys and funds
 - **Multiple Wallet Support**: Connect with Internet Identity, MetaMask, and Bitcoin wallets
 - **Secure Authentication**: Real wallet connections with proper authentication flows
@@ -50,11 +42,11 @@ The ICPesa Payment Gateway is a decentralized application built on the Internet 
 
 ### Advanced Bitcoin Features
 
-- **ckBTC Integration**: Use ckBTC—a trustless, non-custodial, 1:1 backed synthetic Bitcoin twin token that utilizes ICRC1/ICRC2 token standards—for fast finality (approximately 1sec) and low cost (approximately $0.01) Bitcoin transactions. Perfect for payment systems, rewards programs, or lending protocols powered by Bitcoin's liquidity.
+- **ckBTC Integration**: Uses ckBTC—a trustless, non-custodial, 1:1 backed synthetic Bitcoin twin token that utilizes ICRC1/ICRC2 token standards—for fast finality (approximately 1sec) and low cost (approximately $0.01) Bitcoin transactions. Perfect for payment systems, rewards programs, or lending protocols powered by Bitcoin's liquidity.
 
-- **Direct Bitcoin Access with ICP**: Utilize the Bitcoin Integration API to retrieve UTXOs, check balances, view fee percentiles, and access block headers directly from ICP canisters. This enables building data-rich, responsive DeFi applications.
+- **Direct Bitcoin Access with ICP**: Utilizes the Bitcoin Integration API to retrieve UTXOs, check balances, view fee percentiles, and access block headers directly from ICP canisters. This enables building data-rich, responsive DeFi applications.
 
-- **Advanced Transaction Signing**: Take advantage of ICP's native support for Threshold Schnorr signatures to handle Taproot transactions. This capability is crucial for innovative use cases involving Ordinals, Runes, and BRC-20 assets. Also includes Threshold ECDSA signatures for simpler Bitcoin transactions.
+- **Advanced Transaction Signing**: Utilizes ICP's native support for Threshold Schnorr signatures to handle Taproot transactions as well as including Threshold ECDSA signatures for simpler Bitcoin transactions.
 
 ## Architecture
 
@@ -511,9 +503,7 @@ Contributions to the Bitcoin Payment Gateway are welcome! Please follow these st
 4. Push to the branch: `git push origin feature/my-new-feature`
 5. Submit a pull request
 
-## License
 
-This project is licensed under the MIT License - see the LICENSE file for details.
 
 ---
 
@@ -557,7 +547,7 @@ The application consists of three main components:
 
 ## License
 
-MIT License
+This project is licensed under the MIT License - see the LICENSE file for details.
 
 ## Support
 
